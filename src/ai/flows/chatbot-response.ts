@@ -38,10 +38,11 @@ const prompt = ai.definePrompt({
 
 Conversation history:
 {{#each conversationHistory}}
-  {{#ifEquals role "user"}}User: {{content}}{{#else}}Assistant: {{content}}{{/ifEquals}}
+{{role}}: {{content}}
 {{/each}}
 
-User message: {{{message}}}`,config: {
+User message: {{{message}}}`,
+  config: {
     safetySettings: [
       {
         category: 'HARM_CATEGORY_HATE_SPEECH',
@@ -74,9 +75,3 @@ const chatbotResponseFlow = ai.defineFlow(
     return output!;
   }
 );
-
-// Handlebars helper function to check for equality
-Handlebars.registerHelper('ifEquals', function(arg1, arg2, options) {
-  // @ts-expect-error
-  return (arg1 == arg2) ? options.fn(this) : options.inverse(this); //NOSONAR
-});
