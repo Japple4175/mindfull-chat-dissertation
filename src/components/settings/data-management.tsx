@@ -1,3 +1,4 @@
+
 'use client';
 
 import { Button } from '@/components/ui/button';
@@ -17,14 +18,21 @@ import { useToast } from '@/hooks/use-toast';
 import { useState } from 'react';
 import { deleteAllUserMoodsAction } from '@/actions/mood-actions';
 import { Trash2 } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth'; // Added useAuth import
 
 export function DataManagement() {
   const { toast } = useToast();
+  const { user } = useAuth(); // Get user from AuthContext
   const [isDeleting, setIsDeleting] = useState(false);
 
   const handleDeleteAllData = async () => {
+    if (!user) {
+      toast({ title: 'Authentication Error', description: 'You must be logged in to delete data.', variant: 'destructive' });
+      return;
+    }
+
     setIsDeleting(true);
-    const result = await deleteAllUserMoodsAction();
+    const result = await deleteAllUserMoodsAction(user.uid); // Pass user.uid
     if (result.success) {
       toast({ title: 'Data Deleted', description: 'All your mood data has been successfully deleted.' });
     } else {
@@ -50,7 +58,7 @@ export function DataManagement() {
             </p>
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button variant="destructive" disabled={isDeleting}>
+                <Button variant="destructive" disabled={isDeleting || !user}>
                   {isDeleting ? 'Deleting Data...' : 'Delete All Mood Data'}
                 </Button>
               </AlertDialogTrigger>
@@ -63,14 +71,13 @@ export function DataManagement() {
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                   <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={handleDeleteAllData} disabled={isDeleting} className="bg-destructive hover:bg-destructive/90">
+                  <AlertDialogAction onClick={handleDeleteAllData} disabled={isDeleting || !user} className="bg-destructive hover:bg-destructive/90">
                     {isDeleting ? 'Deleting...' : 'Yes, delete all my data'}
                   </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
           </div>
-          {/* Add more data management options here if needed, e.g., export data */}
         </div>
       </CardContent>
     </Card>
