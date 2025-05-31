@@ -1,7 +1,9 @@
+
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { collection, query, where, orderBy, getDocs, Timestamp, startOfDay, endOfDay, subDays, subMonths } from 'firebase/firestore';
+// Removed startOfDay, endOfDay, subDays, subMonths from this import
+import { collection, query, where, orderBy, getDocs, Timestamp } from 'firebase/firestore';
 import { db, auth } from '@/lib/firebase';
 import type { MoodEntry, MoodScale } from '@/lib/types';
 import { moods as moodConfigs } from './mood-selector';
@@ -11,7 +13,8 @@ import { ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent, ChartLe
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Info, AlertTriangle } from 'lucide-react';
 import { Skeleton } from '../ui/skeleton';
-import { format, eachDayOfInterval, parseISO } from 'date-fns';
+// These functions are correctly imported from date-fns
+import { format, eachDayOfInterval, parseISO, startOfDay, endOfDay, subDays, subMonths } from 'date-fns';
 
 
 interface MoodChartProps {
@@ -25,18 +28,17 @@ async function fetchMoodDataForChart(userId: string, timeRange: 'weekly' | 'mont
   if (timeRange === 'weekly') {
     startDate = startOfDay(subDays(now, 6)); // Last 7 days including today
   } else {
-    startDate = startOfDay(subMonths(now, 1)); // Last 30 days approx.
-    startDate.setDate(1); // Start from the 1st of the month for monthly view if desired, or keep last 30 days.
-                          // Let's do last 30 days from today for simplicity for monthly.
+    startDate = startOfDay(subMonths(now, 1)); 
+    startDate.setDate(1); 
     startDate = startOfDay(subDays(now, 29)); 
   }
-  const endDate = endOfDay(now);
+  const endDateValue = endOfDay(now);
 
   const q = query(
     collection(db, 'moodEntries'),
     where('userId', '==', userId),
     where('timestamp', '>=', startDate),
-    where('timestamp', '<=', endDate),
+    where('timestamp', '<=', endDateValue),
     orderBy('timestamp', 'asc')
   );
 
