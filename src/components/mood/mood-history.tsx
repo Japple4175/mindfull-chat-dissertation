@@ -12,14 +12,10 @@ import { AlertTriangle, Info } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 async function fetchMoodHistory(userId: string): Promise<MoodEntry[]> {
-  // IMPORTANT: The orderBy clause was temporarily removed to avoid an error due to a missing Firestore index.
-  // For correct "Recent Moods" functionality (fetching the actual most recent entries),
-  // please create the composite index in Firebase as indicated by the error message you saw.
-  // The link is typically: https://console.firebase.google.com/v1/r/project/YOUR_PROJECT_ID/firestore/indexes?create_composite=...
   const q = query(
     collection(db, 'moodEntries'),
     where('userId', '==', userId),
-    // orderBy('timestamp', 'desc'), // Temporarily removed. Create the Firestore index for this.
+    orderBy('timestamp', 'desc'), // Re-enabled server-side sorting
     limit(10) // Fetch up to 10 entries
   );
   const querySnapshot = await getDocs(q);
@@ -34,24 +30,21 @@ async function fetchMoodHistory(userId: string): Promise<MoodEntry[]> {
       createdAt: data.createdAt as Timestamp,
     } as MoodEntry;
   });
-
-  // Client-side sort for the fetched (limited and potentially not the newest) entries.
-  // This makes the displayed 10 items appear in order, but they might not be the globally most recent 10.
-  return entries.sort((a, b) => b.timestamp.toMillis() - a.timestamp.toMillis());
+  // Removed client-side sort as server-side sort is active
+  return entries;
 }
 
 export function MoodHistory() {
-  const currentUser = auth.currentUser; // Direct usage, assumes AuthProvider has updated by now
+  const currentUser = auth.currentUser; 
   const { data: moodHistory, isLoading, error, refetch } = useQuery<MoodEntry[], Error>({
     queryKey: ['moodHistory', currentUser?.uid],
     queryFn: () => {
       if (!currentUser?.uid) throw new Error('User not authenticated');
       return fetchMoodHistory(currentUser.uid);
     },
-    enabled: !!currentUser?.uid, // Only run query if userId is available
+    enabled: !!currentUser?.uid, 
   });
 
-  // Consider adding a button or interval to refetch if needed, or rely on revalidatePath from server actions
 
   if (isLoading) {
     return (
@@ -74,15 +67,18 @@ export function MoodHistory() {
   }
 
   if (error) {
-    // The error.message from Firebase should contain the link to create the index.
     return (
       <Alert variant="destructive">
         <AlertTriangle className="h-4 w-4" />
         <AlertTitle>Error Loading Mood History</AlertTitle>
         <AlertDescription>
           {error.message}
-          <br />
-          <strong>Action Required:</strong> Please create the recommended Firestore index using the link above to ensure moods are fetched and sorted correctly.
+          {error.message.includes("query requires an index") && (
+             <>
+              <br />
+              <strong>Action Required:</strong> It seems the Firestore index might still be building or wasn't created. Please ensure the composite index is active in your Firebase console (Firestore -> Indexes). You can usually find a link to create it in the full error message in your server logs or browser console.
+             </>
+          )}
         </AlertDescription>
       </Alert>
     );
@@ -111,7 +107,7 @@ export function MoodHistory() {
     <Card>
       <CardHeader>
         <CardTitle className="font-headline">Recent Moods</CardTitle>
-        <CardDescription>Your latest mood entries. (Note: Sorting might be temporarily affected if Firestore index is pending)</CardDescription>
+        <CardDescription>Your latest mood entries.</CardDescription> 
       </CardHeader>
       <CardContent className="space-y-4">
         {moodHistory.map(entry => (
