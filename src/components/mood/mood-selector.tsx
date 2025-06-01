@@ -1,3 +1,4 @@
+
 'use client';
 
 import type { MoodScale, Mood } from '@/lib/types';
@@ -24,6 +25,7 @@ export function MoodSelector({ selectedMood, onSelectMood }: MoodSelectorProps) 
       {moods.map((mood) => (
         <Button
           key={mood.value}
+          type="button" // Explicitly set type to "button"
           variant="outline"
           className={cn(
             "flex flex-col items-center justify-center h-24 w-24 sm:h-28 sm:w-28 rounded-lg p-3 transition-all duration-200 ease-in-out transform hover:scale-105 focus:ring-2 focus:ring-primary",
