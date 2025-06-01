@@ -14,7 +14,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { CalendarIcon } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
-import { useAuth } from '@/hooks/useAuth'; // Added useAuth import
+import { useAuth } from '@/hooks/useAuth';
 
 export function MoodLogger() {
   const [selectedMood, setSelectedMood] = useState<MoodScale | null>(null);
@@ -22,7 +22,7 @@ export function MoodLogger() {
   const [date, setDate] = useState<Date | undefined>(new Date());
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
-  const { user } = useAuth(); // Get user from AuthContext
+  const { user } = useAuth();
   const formRef = useRef<HTMLFormElement>(null);
 
   const handleSelectMood = (mood: MoodScale) => {
@@ -31,16 +31,25 @@ export function MoodLogger() {
   
   const [datePickerKey, setDatePickerKey] = useState<string | null>(null);
   useEffect(() => {
-    setDatePickerKey(`date-picker-${Math.random()}`);
+    setDatePickerKey(`date-picker-${Date.now().toString()}`); // Use timestamp for a more unique key
   }, []);
 
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    
+    // Client-side logging for easier debugging
+    console.log('Attempting to submit mood log with state:', {
+      userId: user ? user.uid : 'No user object',
+      isUserLoaded: !!user,
+      selectedMood,
+      date,
+      notesLength: notes.length,
+    });
 
     if (!user) {
       toast({ title: 'Authentication Error', description: 'You must be logged in to log your mood.', variant: 'destructive' });
-      setIsSubmitting(false);
+      setIsSubmitting(false); // Ensure isSubmitting is reset
       return;
     }
 
@@ -55,25 +64,30 @@ export function MoodLogger() {
 
     setIsSubmitting(true);
     const formData = new FormData(event.currentTarget);
-    // formData.set('mood', selectedMood); // Mood is already part of hidden input
-    // formData.set('date', format(date, "yyyy-MM-dd")); // Date is already part of hidden input
+    // Hidden inputs for mood and date are already in the form.
 
-    // The hidden inputs for mood and date are already in the form,
-    // so FormData will pick them up. We just need to ensure they are correctly set.
+    try {
+      const result = await logMoodAction(user.uid, formData);
 
-    const result = await logMoodAction(user.uid, formData); // Pass user.uid and formData
-
-    if (result.success) {
-      toast({ title: 'Mood Logged!', description: result.message });
-      setSelectedMood(null);
-      setNotes('');
-      formRef.current?.reset(); 
-      // Explicitly reset date to current date if formRef.current.reset() doesn't handle Popover's state
-      setDate(new Date()); 
-    } else {
-      toast({ title: 'Error Logging Mood', description: result.error, variant: 'destructive' });
+      if (result.success) {
+        toast({ title: 'Mood Logged!', description: result.message });
+        setSelectedMood(null);
+        setNotes('');
+        if (formRef.current) {
+          formRef.current.reset(); 
+        }
+        setDate(new Date()); 
+        // Force re-render of date picker if needed, though Popover key might handle this
+        setDatePickerKey(`date-picker-${Date.now().toString()}-reset`);
+      } else {
+        toast({ title: 'Error Logging Mood', description: result.error || 'An unknown error occurred.', variant: 'destructive' });
+      }
+    } catch (error: any) {
+      console.error('Client-side error during mood submission:', error);
+      toast({ title: 'Submission Error', description: error.message || 'An unexpected error occurred on the client.', variant: 'destructive' });
+    } finally {
+      setIsSubmitting(false);
     }
-    setIsSubmitting(false);
   };
 
 
@@ -98,6 +112,7 @@ export function MoodLogger() {
                     "w-full justify-start text-left font-normal",
                     !date && "text-muted-foreground"
                   )}
+                  disabled={isSubmitting} // Disable popover trigger while submitting
                 >
                   <CalendarIcon className="mr-2 h-4 w-4" />
                   {date ? format(date, "PPP") : <span>Pick a date</span>}
@@ -107,7 +122,11 @@ export function MoodLogger() {
                 <Calendar
                   mode="single"
                   selected={date}
-                  onSelect={setDate}
+                  onSelect={(selectedDateValue) => {
+                     setDate(selectedDateValue);
+                     // Optionally, force Popover to close or update key if issues with selection update
+                     // setDatePickerKey(`date-picker-${Date.now().toString()}-select`);
+                  }}
                   initialFocus
                   disabled={(d) => d > new Date() || d < new Date("1900-01-01")}
                 />
@@ -131,7 +150,11 @@ export function MoodLogger() {
         </div>
       </div>
 
-      <Button type="submit" className="w-full sm:w-auto" disabled={!selectedMood || !user || isSubmitting}>
+      <Button 
+        type="submit" 
+        className="w-full sm:w-auto" 
+        disabled={!selectedMood || !user || !date || isSubmitting}
+      >
         {isSubmitting ? 'Saving Mood...' : 'Save Mood'}
       </Button>
     </form>
