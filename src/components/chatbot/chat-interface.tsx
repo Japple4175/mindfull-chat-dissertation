@@ -64,8 +64,8 @@ export function ChatInterface() {
 
 
   return (
-    <div className="flex flex-col h-full">
-      <ScrollArea className="flex-grow p-4 sm:p-6"> {/* Removed scrollAreaRef as it's no longer directly used for scrolling */}
+    <div className="flex flex-col h-full overflow-hidden"> {/* Added overflow-hidden */}
+      <ScrollArea className="flex-grow p-4 sm:p-6">
         <div className="space-y-6">
           {messages.map((msg, index) => (
             <div
