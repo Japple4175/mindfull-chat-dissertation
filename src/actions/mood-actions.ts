@@ -27,15 +27,26 @@ export async function logMoodAction(userId: string, formData: FormData) {
 
   let selectedDateObject;
   try {
-    // The string 'yyyy-MM-dd' is interpreted by new Date() as UTC midnight.
-    selectedDateObject = new Date(selectedDateStr);
+    // Parse the 'yyyy-MM-dd' string.
+    // The Date constructor with a string like '2023-10-26' interprets it as UTC midnight.
+    // To be very explicit and avoid potential server timezone issues if they differ from UTC:
+    const parts = selectedDateStr.split('-');
+    if (parts.length === 3) {
+      const year = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10) - 1; // JS Date months are 0-indexed
+      const day = parseInt(parts[2], 10);
+      selectedDateObject = new Date(Date.UTC(year, month, day)); // Create as UTC date
+    } else {
+      throw new Error('Invalid date string format');
+    }
+
     if (isNaN(selectedDateObject.getTime())) {
-        console.error('[Server Action] logMoodAction: Error - Invalid date string provided:', selectedDateStr);
+        console.error('[Server Action] logMoodAction: Error - Invalid date string provided or parsed:', selectedDateStr);
         return { success: false, error: 'Invalid date format.' };
     }
-  } catch (e) {
-    console.error('[Server Action] logMoodAction: Error parsing date string:', selectedDateStr, e);
-    return { success: false, error: 'Error parsing date.' };
+  } catch (e: any) {
+    console.error('[Server Action] logMoodAction: Error parsing date string:', selectedDateStr, e.message);
+    return { success: false, error: `Error parsing date: ${e.message}` };
   }
   
   const moodDataToSave = {
@@ -47,7 +58,7 @@ export async function logMoodAction(userId: string, formData: FormData) {
   };
 
   console.log('[Server Action] logMoodAction: Attempting to save data:', JSON.stringify(
-    { ...moodDataToSave, timestamp: selectedDateObject.toISOString() },
+    { ...moodDataToSave, timestamp: selectedDateObject.toISOString() }, // Log ISO string for readability
     null, 2)
   );
 
@@ -56,33 +67,26 @@ export async function logMoodAction(userId: string, formData: FormData) {
     const docRef = await addDoc(collection(db, 'moodEntries'), moodDataToSave);
     console.log('[Server Action] logMoodAction: After addDoc call. Document written with ID:', docRef.id);
 
-    // Temporarily commenting out revalidatePath for diagnosis
-    // console.log('[Server Action] logMoodAction: Attempting to revalidate paths.');
+    // DIAGNOSIS: revalidatePath is temporarily commented out.
+    // If mood saving works without these, revalidation might be part of the timeout issue.
+    // console.log('[Server Action] logMoodAction: Attempting to revalidate paths (currently commented out).');
     // revalidatePath('/dashboard');
     // revalidatePath('/trends');
-    // console.log('[Server Action] logMoodAction: Paths revalidated successfully (commented out).');
+    // console.log('[Server Action] logMoodAction: Paths revalidation step bypassed for diagnosis.');
     
     return { success: true, message: 'Mood logged successfully!' };
   } catch (error: any) {
-    console.error('[Server Action] logMoodAction: Error during Firestore operation or revalidation. Raw error:', error);
-    console.error('[Server Action] logMoodAction: Error name:', error.name);
-    console.error('[Server Action] logMoodAction: Error message:', error.message);
-    if (error.code) {
-      console.error('[Server Action] logMoodAction: Error code:', error.code);
+    console.error('[Server Action] logMoodAction: Firestore operation FAILED. Raw error:', error);
+    let detailedErrorMessage = 'Failed to save mood to database.';
+    if (error.code) { 
+      detailedErrorMessage += ` (Error Code: ${error.code})`;
     }
-    
-    let errorMessage = 'Failed to log mood. Please try again.';
     if (error.message) {
-        if (String(error.message).toLowerCase().includes('permission denied')) {
-            errorMessage = 'Failed to log mood: Permission denied. Please check Firestore rules.';
-        } else {
-            errorMessage = `Failed to log mood: ${error.message}`;
-        }
-    } else if (typeof error === 'string') {
-        errorMessage = `Failed to log mood: ${error}`;
+      detailedErrorMessage += `: ${error.message}`;
     }
+    console.error(`[Server Action] logMoodAction: Specific error message constructed: ${detailedErrorMessage}`);
     
-    return { success: false, error: errorMessage };
+    return { success: false, error: detailedErrorMessage };
   }
 }
 
@@ -98,13 +102,13 @@ export async function deleteMoodAction(moodEntryId: string) {
     await deleteDoc(doc(db, 'moodEntries', moodEntryId));
     console.log('[Server Action] deleteMoodAction: After deleteDoc call. Document deleted.');
     
-    // Temporarily commenting out revalidatePath for diagnosis
+    // DIAGNOSIS: revalidatePath is temporarily commented out.
     // revalidatePath('/dashboard');
     // revalidatePath('/trends');
     // console.log('[Server Action] deleteMoodAction: Paths revalidated (commented out).');
     return { success: true, message: 'Mood entry deleted.' };
   } catch (error: any) {
-    console.error('[Server Action] deleteMoodAction: Error during Firestore delete operation or revalidation. Raw error:', error);
+    console.error('[Server Action] deleteMoodAction: Firestore delete operation FAILED. Raw error:', error);
     let errorMessage = 'Failed to delete mood entry.';
      if (error.message) {
         errorMessage = `Failed to delete mood entry: ${error.message}`;
@@ -127,7 +131,7 @@ export async function deleteAllUserMoodsAction(userId: string) {
     
     if (querySnapshot.empty) {
       console.log('[Server Action] deleteAllUserMoodsAction: No mood entries found for user to delete.');
-      // Temporarily commenting out revalidatePath for diagnosis
+      // DIAGNOSIS: revalidatePath is temporarily commented out.
       // revalidatePath('/dashboard');
       // revalidatePath('/trends');
       // revalidatePath('/settings');
@@ -135,21 +139,21 @@ export async function deleteAllUserMoodsAction(userId: string) {
     }
 
     console.log(`[Server Action] deleteAllUserMoodsAction: Found ${querySnapshot.size} entries to delete. Starting batch delete.`);
-    const batch = [];
+    const deletePromises: Promise<void>[] = [];
     for (const document of querySnapshot.docs) {
-      batch.push(deleteDoc(doc(db, 'moodEntries', document.id)));
+      deletePromises.push(deleteDoc(doc(db, 'moodEntries', document.id)));
     }
-    await Promise.all(batch);
+    await Promise.all(deletePromises);
     console.log('[Server Action] deleteAllUserMoodsAction: Batch delete completed.');
 
-    // Temporarily commenting out revalidatePath for diagnosis
+    // DIAGNOSIS: revalidatePath is temporarily commented out.
     // revalidatePath('/dashboard');
     // revalidatePath('/trends');
     // revalidatePath('/settings');
     // console.log('[Server Action] deleteAllUserMoodsAction: Paths revalidated (commented out).');
     return { success: true, message: 'All mood data deleted successfully.' };
   } catch (error: any) {
-    console.error('[Server Action] deleteAllUserMoodsAction: Error deleting all mood data. Raw error:', error);
+    console.error('[Server Action] deleteAllUserMoodsAction: Firestore delete all operation FAILED. Raw error:', error);
     let errorMessage = 'Failed to delete all mood data.';
     if (error.message) {
         errorMessage = `Failed to delete all mood data: ${error.message}`;
@@ -157,3 +161,5 @@ export async function deleteAllUserMoodsAction(userId: string) {
     return { success: false, error: errorMessage };
   }
 }
+
+    
