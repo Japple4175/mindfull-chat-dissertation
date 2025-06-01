@@ -72,6 +72,7 @@ const chatbotResponseFlow = ai.defineFlow(
     outputSchema: ChatbotResponseOutputSchema,
   },
   async (input): Promise<ChatbotResponseOutput> => {
+    console.log('Chatbot flow invoked with input:', JSON.stringify(input, null, 2));
     try {
       const genkitResponse = await prompt(input);
 
@@ -88,7 +89,7 @@ const chatbotResponseFlow = ai.defineFlow(
         if (genkitResponse && genkitResponse.candidates && genkitResponse.candidates.length > 0) {
           genkitResponse.candidates.forEach((candidate, index) => {
             const finishReason = candidate.finishReason;
-            const candidateMessageParts = candidate.message?.content; // This is an array of parts
+            const candidateMessageParts = candidate.message?.content; 
             console.error(`Candidate ${index}: Finish Reason - ${finishReason}`);
             console.error(`Candidate ${index}: Message Parts - ${JSON.stringify(candidateMessageParts, null, 2)}`);
             
@@ -114,6 +115,11 @@ const chatbotResponseFlow = ai.defineFlow(
         }
         
         throw new Error(`Chatbot Flow Error: ${detailMessage} Please check server logs.`);
+      }
+      
+      if (!genkitResponse.output.response || typeof genkitResponse.output.response !== 'string') {
+        console.error('Chatbot Flow Error: AI model output is valid, but the response text is missing or not a string. Output:', JSON.stringify(genkitResponse.output, null, 2));
+        throw new Error('AI model returned an invalid response format. Expected a text string.');
       }
       
       return genkitResponse.output;
