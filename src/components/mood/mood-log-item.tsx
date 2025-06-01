@@ -1,3 +1,4 @@
+
 'use client';
 
 import type { MoodEntry } from '@/lib/types';
@@ -20,6 +21,8 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '@/hooks/useAuth';
 
 interface MoodLogItemProps {
   entry: MoodEntry;
@@ -29,12 +32,20 @@ export function MoodLogItem({ entry }: MoodLogItemProps) {
   const moodConfig = moodConfigs.find(m => m.value === entry.mood);
   const { toast } = useToast();
   const [isDeleting, setIsDeleting] = useState(false);
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
 
   const handleDelete = async () => {
+    if (!user) {
+      toast({ title: 'Error', description: 'User not authenticated.', variant: 'destructive' });
+      return;
+    }
     setIsDeleting(true);
     const result = await deleteMoodAction(entry.id);
     if (result.success) {
       toast({ title: 'Mood Deleted', description: result.message });
+      // Invalidate the moodHistory query to refetch data
+      queryClient.invalidateQueries({ queryKey: ['moodHistory', user.uid] });
     } else {
       toast({ title: 'Error', description: result.error, variant: 'destructive' });
     }
