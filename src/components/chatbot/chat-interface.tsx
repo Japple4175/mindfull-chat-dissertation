@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useRef, useEffect, type FormEvent } from 'react';
@@ -15,16 +16,11 @@ export function ChatInterface() {
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null); // Ref for the element to scroll to
   const { user } = useAuth();
 
   const scrollToBottom = () => {
-    if (scrollAreaRef.current) {
-      const scrollViewport = scrollAreaRef.current.querySelector('div[data-radix-scroll-area-viewport]');
-      if (scrollViewport) {
-        scrollViewport.scrollTop = scrollViewport.scrollHeight;
-      }
-    }
+    messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
   };
   
   useEffect(scrollToBottom, [messages]);
@@ -69,7 +65,7 @@ export function ChatInterface() {
 
   return (
     <div className="flex flex-col h-full">
-      <ScrollArea className="flex-grow p-4 sm:p-6" ref={scrollAreaRef}>
+      <ScrollArea className="flex-grow p-4 sm:p-6"> {/* Removed scrollAreaRef as it's no longer directly used for scrolling */}
         <div className="space-y-6">
           {messages.map((msg, index) => (
             <div
@@ -112,6 +108,7 @@ export function ChatInterface() {
               </div>
             </div>
           )}
+          <div ref={messagesEndRef} /> {/* Empty div to mark the end of messages */}
         </div>
       </ScrollArea>
       <div className="border-t bg-background/80 p-3 sm:p-4">
