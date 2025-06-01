@@ -6,6 +6,15 @@ import type { MoodEntry, MoodScale } from '@/lib/types';
 import { addDoc, collection, deleteDoc, doc, serverTimestamp, query, where, getDocs, Timestamp } from 'firebase/firestore';
 import { revalidatePath } from 'next/cache';
 
+// Helper function to check if two Date objects represent the same day in UTC
+const isSameUtcDay = (date1: Date, date2: Date): boolean => {
+  return (
+    date1.getUTCFullYear() === date2.getUTCFullYear() &&
+    date1.getUTCMonth() === date2.getUTCMonth() &&
+    date1.getUTCDate() === date2.getUTCDate()
+  );
+};
+
 export async function logMoodAction(userId: string, formData: FormData) {
   console.log('[Server Action] logMoodAction: Invoked with userId:', userId);
   const mood = formData.get('mood') as MoodScale;
@@ -25,22 +34,19 @@ export async function logMoodAction(userId: string, formData: FormData) {
     return { success: false, error: 'Date is required.' };
   }
 
-  let selectedDateObject;
+  let targetDayUtcMidnight;
   try {
-    // Parse the 'yyyy-MM-dd' string.
-    // The Date constructor with a string like '2023-10-26' interprets it as UTC midnight.
-    // To be very explicit and avoid potential server timezone issues if they differ from UTC:
     const parts = selectedDateStr.split('-');
     if (parts.length === 3) {
       const year = parseInt(parts[0], 10);
       const month = parseInt(parts[1], 10) - 1; // JS Date months are 0-indexed
       const day = parseInt(parts[2], 10);
-      selectedDateObject = new Date(Date.UTC(year, month, day)); // Create as UTC date
+      targetDayUtcMidnight = new Date(Date.UTC(year, month, day));
     } else {
       throw new Error('Invalid date string format');
     }
 
-    if (isNaN(selectedDateObject.getTime())) {
+    if (isNaN(targetDayUtcMidnight.getTime())) {
         console.error('[Server Action] logMoodAction: Error - Invalid date string provided or parsed:', selectedDateStr);
         return { success: false, error: 'Invalid date format.' };
     }
@@ -49,16 +55,28 @@ export async function logMoodAction(userId: string, formData: FormData) {
     return { success: false, error: `Error parsing date: ${e.message}` };
   }
   
+  const now = new Date(); // Current server time
+  let timestampToSave;
+
+  // Check if the target day (from date picker, represented as UTC midnight) is the same as the current server day (also UTC)
+  if (isSameUtcDay(targetDayUtcMidnight, now)) {
+    timestampToSave = serverTimestamp(); // Use exact server time for "today's" log
+    console.log('[Server Action] logMoodAction: Logging for "today", using serverTimestamp.');
+  } else {
+    timestampToSave = Timestamp.fromDate(targetDayUtcMidnight); // Use UTC midnight for past/future days
+    console.log('[Server Action] logMoodAction: Logging for a past/future day, using UTC midnight of target day (', targetDayUtcMidnight.toISOString(), ').');
+  }
+  
   const moodDataToSave = {
     userId: userId,
     mood,
     notes: notes || '',
-    timestamp: Timestamp.fromDate(selectedDateObject), // Convert JS Date to Firestore Timestamp
+    timestamp: timestampToSave,
     createdAt: serverTimestamp(),
   };
 
-  console.log('[Server Action] logMoodAction: Attempting to save data:', JSON.stringify(
-    { ...moodDataToSave, timestamp: selectedDateObject.toISOString() }, // Log ISO string for readability
+  console.log('[Server Action] logMoodAction: Attempting to save data (timestamp will be server-generated if for today):', JSON.stringify(
+    { ...moodDataToSave, timestamp: timestampToSave === serverTimestamp() ? "serverTimestamp()" : targetDayUtcMidnight.toISOString() },
     null, 2)
   );
 
@@ -66,13 +84,10 @@ export async function logMoodAction(userId: string, formData: FormData) {
     console.log('[Server Action] logMoodAction: Before addDoc call to moodEntries collection.');
     const docRef = await addDoc(collection(db, 'moodEntries'), moodDataToSave);
     console.log('[Server Action] logMoodAction: After addDoc call. Document written with ID:', docRef.id);
-
-    // DIAGNOSIS: revalidatePath is temporarily commented out.
-    // If mood saving works without these, revalidation might be part of the timeout issue.
-    // console.log('[Server Action] logMoodAction: Attempting to revalidate paths (currently commented out).');
-    // revalidatePath('/dashboard');
-    // revalidatePath('/trends');
-    // console.log('[Server Action] logMoodAction: Paths revalidation step bypassed for diagnosis.');
+    
+    revalidatePath('/dashboard');
+    revalidatePath('/trends');
+    console.log('[Server Action] logMoodAction: Paths revalidated.');
     
     return { success: true, message: 'Mood logged successfully!' };
   } catch (error: any) {
@@ -102,10 +117,9 @@ export async function deleteMoodAction(moodEntryId: string) {
     await deleteDoc(doc(db, 'moodEntries', moodEntryId));
     console.log('[Server Action] deleteMoodAction: After deleteDoc call. Document deleted.');
     
-    // DIAGNOSIS: revalidatePath is temporarily commented out.
-    // revalidatePath('/dashboard');
-    // revalidatePath('/trends');
-    // console.log('[Server Action] deleteMoodAction: Paths revalidated (commented out).');
+    revalidatePath('/dashboard');
+    revalidatePath('/trends');
+    console.log('[Server Action] deleteMoodAction: Paths revalidated.');
     return { success: true, message: 'Mood entry deleted.' };
   } catch (error: any) {
     console.error('[Server Action] deleteMoodAction: Firestore delete operation FAILED. Raw error:', error);
@@ -131,10 +145,9 @@ export async function deleteAllUserMoodsAction(userId: string) {
     
     if (querySnapshot.empty) {
       console.log('[Server Action] deleteAllUserMoodsAction: No mood entries found for user to delete.');
-      // DIAGNOSIS: revalidatePath is temporarily commented out.
-      // revalidatePath('/dashboard');
-      // revalidatePath('/trends');
-      // revalidatePath('/settings');
+      revalidatePath('/dashboard');
+      revalidatePath('/trends');
+      revalidatePath('/settings');
       return { success: true, message: 'No mood data found to delete.' };
     }
 
@@ -146,11 +159,10 @@ export async function deleteAllUserMoodsAction(userId: string) {
     await Promise.all(deletePromises);
     console.log('[Server Action] deleteAllUserMoodsAction: Batch delete completed.');
 
-    // DIAGNOSIS: revalidatePath is temporarily commented out.
-    // revalidatePath('/dashboard');
-    // revalidatePath('/trends');
-    // revalidatePath('/settings');
-    // console.log('[Server Action] deleteAllUserMoodsAction: Paths revalidated (commented out).');
+    revalidatePath('/dashboard');
+    revalidatePath('/trends');
+    revalidatePath('/settings');
+    console.log('[Server Action] deleteAllUserMoodsAction: Paths revalidated.');
     return { success: true, message: 'All mood data deleted successfully.' };
   } catch (error: any) {
     console.error('[Server Action] deleteAllUserMoodsAction: Firestore delete all operation FAILED. Raw error:', error);
@@ -161,5 +173,3 @@ export async function deleteAllUserMoodsAction(userId: string) {
     return { success: false, error: errorMessage };
   }
 }
-
-    
