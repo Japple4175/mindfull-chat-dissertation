@@ -15,6 +15,7 @@ import { CalendarIcon } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useAuth } from '@/hooks/useAuth';
+import { useQueryClient } from '@tanstack/react-query';
 
 export function MoodLogger() {
   const [selectedMood, setSelectedMood] = useState<MoodScale | null>(null);
@@ -24,6 +25,7 @@ export function MoodLogger() {
   const { toast } = useToast();
   const { user } = useAuth();
   const formRef = useRef<HTMLFormElement>(null);
+  const queryClient = useQueryClient();
 
   const handleSelectMood = (mood: MoodScale) => {
     setSelectedMood(mood);
@@ -38,7 +40,6 @@ export function MoodLogger() {
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     
-    // Client-side logging for easier debugging
     console.log('Attempting to submit mood log with state:', {
       userId: user ? user.uid : 'No user object',
       isUserLoaded: !!user,
@@ -49,7 +50,7 @@ export function MoodLogger() {
 
     if (!user) {
       toast({ title: 'Authentication Error', description: 'You must be logged in to log your mood.', variant: 'destructive' });
-      setIsSubmitting(false); // Ensure isSubmitting is reset
+      setIsSubmitting(false);
       return;
     }
 
@@ -64,7 +65,6 @@ export function MoodLogger() {
 
     setIsSubmitting(true);
     const formData = new FormData(event.currentTarget);
-    // Hidden inputs for mood and date are already in the form.
 
     try {
       const result = await logMoodAction(user.uid, formData);
@@ -77,8 +77,11 @@ export function MoodLogger() {
           formRef.current.reset(); 
         }
         setDate(new Date()); 
-        // Force re-render of date picker if needed, though Popover key might handle this
         setDatePickerKey(`date-picker-${Date.now().toString()}-reset`);
+        // Invalidate the moodHistory query to refetch data
+        if (user?.uid) {
+          queryClient.invalidateQueries({ queryKey: ['moodHistory', user.uid] });
+        }
       } else {
         toast({ title: 'Error Logging Mood', description: result.error || 'An unknown error occurred.', variant: 'destructive' });
       }
@@ -112,7 +115,7 @@ export function MoodLogger() {
                     "w-full justify-start text-left font-normal",
                     !date && "text-muted-foreground"
                   )}
-                  disabled={isSubmitting} // Disable popover trigger while submitting
+                  disabled={isSubmitting}
                 >
                   <CalendarIcon className="mr-2 h-4 w-4" />
                   {date ? format(date, "PPP") : <span>Pick a date</span>}
@@ -124,8 +127,6 @@ export function MoodLogger() {
                   selected={date}
                   onSelect={(selectedDateValue) => {
                      setDate(selectedDateValue);
-                     // Optionally, force Popover to close or update key if issues with selection update
-                     // setDatePickerKey(`date-picker-${Date.now().toString()}-select`);
                   }}
                   initialFocus
                   disabled={(d) => d > new Date() || d < new Date("1900-01-01")}
