@@ -11,22 +11,45 @@ export default function TrendsPage() {
       <div className="space-y-8">
         <Card className="shadow-lg">
           <CardHeader>
-            <CardTitle className="font-headline text-2xl md:text-3xl">Mood Trends</CardTitle>
+            <CardTitle className="font-headline text-2xl md:text-3xl">Mood Distribution</CardTitle>
             <CardDescription>
-              Visualize your mood patterns over time to gain deeper insights.
+              Count of each mood logged per day.
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Tabs defaultValue="weekly" className="w-full">
+            <Tabs defaultValue="weekly_dist" className="w-full">
               <TabsList className="grid w-full grid-cols-2 sm:w-[300px] mb-4">
-                <TabsTrigger value="weekly">Weekly</TabsTrigger>
-                <TabsTrigger value="monthly">Monthly</TabsTrigger>
+                <TabsTrigger value="weekly_dist">Weekly</TabsTrigger>
+                <TabsTrigger value="monthly_dist">Monthly</TabsTrigger>
               </TabsList>
-              <TabsContent value="weekly">
-                <MoodChart timeRange="weekly" />
+              <TabsContent value="weekly_dist">
+                <MoodChart timeRange="weekly" chartType="distribution" />
               </TabsContent>
-              <TabsContent value="monthly">
-                <MoodChart timeRange="monthly" />
+              <TabsContent value="monthly_dist">
+                <MoodChart timeRange="monthly" chartType="distribution" />
+              </TabsContent>
+            </Tabs>
+          </CardContent>
+        </Card>
+
+        <Card className="shadow-lg">
+          <CardHeader>
+            <CardTitle className="font-headline text-2xl md:text-3xl">Average Mood Trend</CardTitle>
+            <CardDescription>
+              Your average mood score over time (1: Awful, 5: Great).
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Tabs defaultValue="weekly_avg" className="w-full">
+              <TabsList className="grid w-full grid-cols-2 sm:w-[300px] mb-4">
+                <TabsTrigger value="weekly_avg">Weekly</TabsTrigger>
+                <TabsTrigger value="monthly_avg">Monthly</TabsTrigger>
+              </TabsList>
+              <TabsContent value="weekly_avg">
+                <MoodChart timeRange="weekly" chartType="average" />
+              </TabsContent>
+              <TabsContent value="monthly_avg">
+                <MoodChart timeRange="monthly" chartType="average" />
               </TabsContent>
             </Tabs>
           </CardContent>

@@ -16,6 +16,7 @@ export interface Mood {
   label: string;
   icon: React.ElementType;
   color: string; // Tailwind color class
+  score: number; // Numerical score for averaging
 }
 
 export interface ConversationMessage {

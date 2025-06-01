@@ -7,11 +7,11 @@ import { cn } from '@/lib/utils';
 import { Frown, Meh, Smile, SmilePlus, Laugh } from 'lucide-react'; // Using Smile for Neutral
 
 export const moods: Mood[] = [
-  { value: 'awful', label: 'Awful', icon: Frown, color: 'bg-red-500 hover:bg-red-600' },
-  { value: 'bad', label: 'Bad', icon: Meh, color: 'bg-orange-500 hover:bg-orange-600' },
-  { value: 'neutral', label: 'Neutral', icon: Smile, color: 'bg-yellow-500 hover:bg-yellow-600' }, // Smile as neutral
-  { value: 'good', label: 'Good', icon: SmilePlus, color: 'bg-lime-500 hover:bg-lime-600' },
-  { value: 'great', label: 'Great', icon: Laugh, color: 'bg-green-500 hover:bg-green-600' },
+  { value: 'awful', label: 'Awful', icon: Frown, color: 'bg-red-500 hover:bg-red-600', score: 1 },
+  { value: 'bad', label: 'Bad', icon: Meh, color: 'bg-orange-500 hover:bg-orange-600', score: 2 },
+  { value: 'neutral', label: 'Neutral', icon: Smile, color: 'bg-yellow-500 hover:bg-yellow-600', score: 3 },
+  { value: 'good', label: 'Good', icon: SmilePlus, color: 'bg-lime-500 hover:bg-lime-600', score: 4 },
+  { value: 'great', label: 'Great', icon: Laugh, color: 'bg-green-500 hover:bg-green-600', score: 5 },
 ];
 
 interface MoodSelectorProps {
@@ -25,7 +25,7 @@ export function MoodSelector({ selectedMood, onSelectMood }: MoodSelectorProps) 
       {moods.map((mood) => (
         <Button
           key={mood.value}
-          type="button" // Explicitly set type to "button"
+          type="button"
           variant="outline"
           className={cn(
             "flex flex-col items-center justify-center h-24 w-24 sm:h-28 sm:w-28 rounded-lg p-3 transition-all duration-200 ease-in-out transform hover:scale-105 focus:ring-2 focus:ring-primary",
