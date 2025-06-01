@@ -33,10 +33,6 @@ export async function logMoodAction(userId: string, formData: FormData) {
         console.error('[Server Action] logMoodAction: Error - Invalid date string provided:', selectedDateStr);
         return { success: false, error: 'Invalid date format.' };
     }
-    // To ensure the timestamp represents the chosen day accurately, regardless of timezones,
-    // we can keep it at UTC midnight or set a consistent time like noon UTC.
-    // For simplicity and typical date-only use cases, UTC midnight is fine.
-    // If we wanted noon UTC: selectedDateObject.setUTCHours(12, 0, 0, 0);
   } catch (e) {
     console.error('[Server Action] logMoodAction: Error parsing date string:', selectedDateStr, e);
     return { success: false, error: 'Error parsing date.' };
@@ -51,7 +47,7 @@ export async function logMoodAction(userId: string, formData: FormData) {
   };
 
   console.log('[Server Action] logMoodAction: Attempting to save data:', JSON.stringify(
-    { ...moodDataToSave, timestamp: selectedDateObject.toISOString() }, // Log ISO string for readability
+    { ...moodDataToSave, timestamp: selectedDateObject.toISOString() },
     null, 2)
   );
 
@@ -60,27 +56,24 @@ export async function logMoodAction(userId: string, formData: FormData) {
     const docRef = await addDoc(collection(db, 'moodEntries'), moodDataToSave);
     console.log('[Server Action] logMoodAction: After addDoc call. Document written with ID:', docRef.id);
 
-    // Revalidate paths after successful save
-    console.log('[Server Action] logMoodAction: Attempting to revalidate paths.');
-    revalidatePath('/dashboard');
-    revalidatePath('/trends');
-    console.log('[Server Action] logMoodAction: Paths revalidated successfully.');
+    // Temporarily commenting out revalidatePath for diagnosis
+    // console.log('[Server Action] logMoodAction: Attempting to revalidate paths.');
+    // revalidatePath('/dashboard');
+    // revalidatePath('/trends');
+    // console.log('[Server Action] logMoodAction: Paths revalidated successfully (commented out).');
     
     return { success: true, message: 'Mood logged successfully!' };
   } catch (error: any) {
-    console.error('[Server Action] logMoodAction: Error during Firestore operation or revalidation.');
+    console.error('[Server Action] logMoodAction: Error during Firestore operation or revalidation. Raw error:', error);
     console.error('[Server Action] logMoodAction: Error name:', error.name);
     console.error('[Server Action] logMoodAction: Error message:', error.message);
     if (error.code) {
       console.error('[Server Action] logMoodAction: Error code:', error.code);
     }
-    // Logging the full error object can be verbose but helpful for deep diagnosis
-    // console.error('[Server Action] logMoodAction: Detailed error object:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
-
+    
     let errorMessage = 'Failed to log mood. Please try again.';
     if (error.message) {
-        // Try to give a more user-friendly message for common issues
-        if (error.code === 'permission-denied' || (error.message && error.message.toLowerCase().includes('permission denied'))) {
+        if (String(error.message).toLowerCase().includes('permission denied')) {
             errorMessage = 'Failed to log mood: Permission denied. Please check Firestore rules.';
         } else {
             errorMessage = `Failed to log mood: ${error.message}`;
@@ -105,12 +98,13 @@ export async function deleteMoodAction(moodEntryId: string) {
     await deleteDoc(doc(db, 'moodEntries', moodEntryId));
     console.log('[Server Action] deleteMoodAction: After deleteDoc call. Document deleted.');
     
-    revalidatePath('/dashboard');
-    revalidatePath('/trends');
-    console.log('[Server Action] deleteMoodAction: Paths revalidated.');
+    // Temporarily commenting out revalidatePath for diagnosis
+    // revalidatePath('/dashboard');
+    // revalidatePath('/trends');
+    // console.log('[Server Action] deleteMoodAction: Paths revalidated (commented out).');
     return { success: true, message: 'Mood entry deleted.' };
   } catch (error: any) {
-    console.error('[Server Action] deleteMoodAction: Error during Firestore delete operation or revalidation:', error);
+    console.error('[Server Action] deleteMoodAction: Error during Firestore delete operation or revalidation. Raw error:', error);
     let errorMessage = 'Failed to delete mood entry.';
      if (error.message) {
         errorMessage = `Failed to delete mood entry: ${error.message}`;
@@ -133,9 +127,10 @@ export async function deleteAllUserMoodsAction(userId: string) {
     
     if (querySnapshot.empty) {
       console.log('[Server Action] deleteAllUserMoodsAction: No mood entries found for user to delete.');
-      revalidatePath('/dashboard');
-      revalidatePath('/trends');
-      revalidatePath('/settings');
+      // Temporarily commenting out revalidatePath for diagnosis
+      // revalidatePath('/dashboard');
+      // revalidatePath('/trends');
+      // revalidatePath('/settings');
       return { success: true, message: 'No mood data found to delete.' };
     }
 
@@ -147,14 +142,14 @@ export async function deleteAllUserMoodsAction(userId: string) {
     await Promise.all(batch);
     console.log('[Server Action] deleteAllUserMoodsAction: Batch delete completed.');
 
-    revalidatePath('/dashboard');
-    revalidatePath('/trends');
-    revalidatePath('/settings');
-    console.log('[Server Action] deleteAllUserMoodsAction: Paths revalidated.');
+    // Temporarily commenting out revalidatePath for diagnosis
+    // revalidatePath('/dashboard');
+    // revalidatePath('/trends');
+    // revalidatePath('/settings');
+    // console.log('[Server Action] deleteAllUserMoodsAction: Paths revalidated (commented out).');
     return { success: true, message: 'All mood data deleted successfully.' };
-  } catch (error: any)
- {
-    console.error('[Server Action] deleteAllUserMoodsAction: Error deleting all mood data:', error);
+  } catch (error: any) {
+    console.error('[Server Action] deleteAllUserMoodsAction: Error deleting all mood data. Raw error:', error);
     let errorMessage = 'Failed to delete all mood data.';
     if (error.message) {
         errorMessage = `Failed to delete all mood data: ${error.message}`;
