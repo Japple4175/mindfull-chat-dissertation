@@ -70,8 +70,32 @@ const chatbotResponseFlow = ai.defineFlow(
     inputSchema: ChatbotResponseInputSchema,
     outputSchema: ChatbotResponseOutputSchema,
   },
-  async input => {
-    const {output} = await prompt(input);
-    return output!;
+  async (input): Promise<ChatbotResponseOutput> => {
+    try {
+      const genkitResponse = await prompt(input);
+      
+      if (!genkitResponse.output) {
+        // Log the full response for debugging if available
+        console.error('Chatbot Flow Error: No output from AI model. Full Genkit response:', JSON.stringify(genkitResponse, null, 2));
+        // Inspect candidates if available, they might contain reasons for no output (e.g. safety blocks)
+        if (genkitResponse.candidates && genkitResponse.candidates.length > 0) {
+          genkitResponse.candidates.forEach((candidate, index) => {
+            console.error(`Candidate ${index}: Finish Reason - ${candidate.finishReason}, Message - ${candidate.message?.content}`);
+             if (candidate.finishReason === 'SAFETY' && candidate.message?.content) {
+               const safetyRatings = candidate.message.content.find(part => part.custom?.safetyRatings)?.custom.safetyRatings;
+               if (safetyRatings) {
+                 console.error('Safety Ratings:', JSON.stringify(safetyRatings, null, 2));
+               }
+            }
+          });
+        }
+        throw new Error('The AI model did not return a valid response. This could be due to safety filters or other model issues. Please check server logs.');
+      }
+      return genkitResponse.output;
+    } catch (e: any) {
+      console.error('Error in chatbotResponseFlow:', e);
+      // Re-throw a new error to ensure it's propagated, or transform into a user-friendly error structure.
+      throw new Error(`Failed to get chatbot response: ${e.message || 'An unexpected error occurred in the AI flow.'}`);
+    }
   }
 );
