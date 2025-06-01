@@ -75,9 +75,7 @@ const chatbotResponseFlow = ai.defineFlow(
       const genkitResponse = await prompt(input);
       
       if (!genkitResponse.output) {
-        // Log the full response for debugging if available
         console.error('Chatbot Flow Error: No output from AI model. Full Genkit response:', JSON.stringify(genkitResponse, null, 2));
-        // Inspect candidates if available, they might contain reasons for no output (e.g. safety blocks)
         if (genkitResponse.candidates && genkitResponse.candidates.length > 0) {
           genkitResponse.candidates.forEach((candidate, index) => {
             console.error(`Candidate ${index}: Finish Reason - ${candidate.finishReason}, Message - ${candidate.message?.content}`);
@@ -93,9 +91,31 @@ const chatbotResponseFlow = ai.defineFlow(
       }
       return genkitResponse.output;
     } catch (e: any) {
-      console.error('Error in chatbotResponseFlow:', e);
-      // Re-throw a new error to ensure it's propagated, or transform into a user-friendly error structure.
-      throw new Error(`Failed to get chatbot response: ${e.message || 'An unexpected error occurred in the AI flow.'}`);
+      console.error('Error caught in chatbotResponseFlow. Raw error object:', e);
+      // Attempt to stringify for more details, handling potential circular references
+      try {
+        console.error('Error in chatbotResponseFlow (stringified with sensitive data handling):', 
+          JSON.stringify(e, (key, value) => {
+            // Be cautious about logging sensitive data like API keys or PII from error objects
+            if (typeof value === 'string' && (key.toLowerCase().includes('key') || key.toLowerCase().includes('secret'))) {
+              return '[REDACTED]';
+            }
+            return value;
+          }, 2)
+        );
+      } catch (stringifyError) {
+        console.error('Failed to stringify error object in chatbotResponseFlow:', stringifyError);
+      }
+      
+      let errorMessage = 'Failed to get chatbot response. An unexpected error occurred in the AI flow. Please check server logs for more details.';
+      if (e && e.message) {
+        errorMessage = `Failed to get chatbot response: ${e.message}. Check server logs.`;
+      } else if (typeof e === 'string') {
+        errorMessage = `Failed to get chatbot response: ${e}. Check server logs.`;
+      }
+      
+      throw new Error(errorMessage);
     }
   }
 );
+
