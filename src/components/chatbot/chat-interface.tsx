@@ -13,8 +13,9 @@ import type { ConversationMessage } from '@/lib/types';
 import { useAuth } from '@/hooks/useAuth';
 
 export function ChatInterface() {
+  const defaultInitialMessage = "Hello! I'm here to listen and support you. How are you feeling today?";
   const [messages, setMessages] = useState<ConversationMessage[]>([
-    { role: 'assistant', content: "Hello! I'm here to listen and support you. How are you feeling today?" }
+    { role: 'assistant', content: defaultInitialMessage }
   ]);
   const [conversationHistory, setConversationHistory] = useState<ConversationMessage[]>([]);
   const [input, setInput] = useState('');
@@ -27,6 +28,21 @@ export function ChatInterface() {
   };
   
   useEffect(scrollToBottom, [messages]);
+
+  useEffect(() => {
+    if (user?.displayName) {
+      setMessages(prevMessages => {
+        const newMessages = [...prevMessages];
+        if (newMessages.length > 0 && newMessages[0].role === 'assistant' && newMessages[0].content === defaultInitialMessage) {
+          newMessages[0] = { 
+            role: 'assistant', 
+            content: `Hello, ${user.displayName.split(' ')[0]}! I'm here to listen and support you. How are you feeling today?` 
+          };
+        }
+        return newMessages;
+      });
+    }
+  }, [user]);
 
   const handleSendMessage = async (e?: FormEvent) => {
     if (e) e.preventDefault();
