@@ -9,7 +9,7 @@ export interface MoodEntry {
   userId: string;
   mood: MoodScale;
   notes?: string;
-  timestamp: Timestamp;
+  timestamp: Timestamp; // Firestore Timestamps are fine for server-side MoodEntry objects
   createdAt: Timestamp;
 }
 
@@ -21,7 +21,7 @@ export interface Mood {
   score: number;
 }
 
-// For UI display and AI flow internal use
+// For UI display and AI flow internal use (current session, not necessarily persisted structure)
 export interface ConversationMessage {
   role: 'user' | 'assistant';
   content: string;
@@ -35,10 +35,10 @@ export interface ChatMessageInFirestore {
   timestamp: FieldValue; // For serverTimestamp
 }
 
-// For chat messages retrieved from Firestore (timestamp resolved)
+// For chat messages retrieved from Firestore and passed to client components
 export interface ChatMessageEntry extends ConversationMessage {
   id: string; // Document ID from Firestore
-  timestamp: Timestamp;
+  timestamp: string; // Changed from Firestore Timestamp to ISO string for serialization
 }
 
 

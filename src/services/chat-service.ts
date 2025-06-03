@@ -30,6 +30,7 @@ const MESSAGES_SUBCOLLECTION = 'messages';
 
 /**
  * Fetches the last N chat messages for a given user.
+ * Timestamps are converted to ISO strings for client-side compatibility.
  * @param userId The ID of the user.
  * @param count The maximum number of messages to retrieve.
  * @returns A promise that resolves to an array of ChatMessageEntry.
@@ -53,7 +54,7 @@ export async function fetchChatHistory(userId: string, count: number = 20): Prom
           id: doc.id,
           role: data.role,
           content: data.content,
-          timestamp: data.timestamp as Timestamp,
+          timestamp: (data.timestamp as Timestamp).toDate().toISOString(), // Convert to ISO string
         } as ChatMessageEntry;
       })
       .reverse(); // Reverse to maintain chronological order (oldest first)
