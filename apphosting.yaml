@@ -2,6 +2,70 @@
 # https://firebase.google.com/docs/app-hosting/configure
 
 runConfig:
-  # Increase this value if you'd like to automatically spin up
+  # Consider increasing this value if you'd like to automatically spin up
   # more instances in response to increased traffic.
-  maxInstances: 1
+  maxInstances: 1 # Default is 100, you had 1, keeping it at 1 for now but you might want to increase later.
+  minInstances: 0 # Default is 0, allows scaling to zero to save costs.
+  concurrency: 80 # Default
+  cpu: 1          # Default
+  memoryMiB: 512  # Default. If build errors persist, consider increasing this to 1024 or higher.
+
+# Environment variables and secrets
+# IMPORTANT:
+# 1. For GOOGLE_API_KEY, ensure you have created a secret named 'mindful-chat-google-api-key'
+#    in Google Cloud Secret Manager with your actual Google AI Studio API key as its value.
+# 2. Ensure your App Hosting service account has the "Secret Manager Secret Accessor" role for this secret.
+env:
+  - variable: GOOGLE_API_KEY
+    secret: mindful-chat-google-api-key # This is the NAME of the secret you create in Secret Manager
+    availability:
+      - BUILD # GOOGLE_API_KEY is needed at build time for Genkit initialization
+      - RUNTIME
+
+  - variable: NEXT_PUBLIC_FIREBASE_API_KEY
+    value: "AIzaSyDHqjF2FpHCCNHjAhglesiZD4_Cu6bjmXg"
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+    value: "mindful-chat-ojqww.firebaseapp.com"
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: NEXT_PUBLIC_FIREBASE_PROJECT_ID
+    value: "mindful-chat-ojqww"
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
+    value: "mindful-chat-ojqww.firebasestorage.app"
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+    value: "686243899963"
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: NEXT_PUBLIC_FIREBASE_APP_ID
+    value: "1:686243899963:web:275c84b22e4e5fec628a1e"
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
+    value: "G-8RVW5H65TW"
+    availability:
+      - BUILD
+      - RUNTIME
+
+# Example of how to use pinned versions for secrets if needed:
+#  - variable: PINNED_GOOGLE_API_KEY
+#    secret: mindful-chat-google-api-key@1 # Replace '1' with the specific version of the secret
+#    availability:
+#      - RUNTIME
