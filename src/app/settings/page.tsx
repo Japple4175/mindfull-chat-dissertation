@@ -1,3 +1,4 @@
+
 'use client';
 
 import { AppLayout } from '@/components/layout/app-layout';
@@ -8,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
 import { useState, useEffect, type FormEvent } from 'react';
-import { updateProfile, updateEmail, reauthenticateWithCredential, EmailAuthProvider } from 'firebase/auth';
+import { updateProfile, updateEmail, reauthenticateWithCredential, EmailAuthProvider, updatePassword } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -19,9 +20,13 @@ export default function SettingsPage() {
   const { toast } = useToast();
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
-  const [currentPassword, setCurrentPassword] = useState(''); // For re-authentication
+  const [currentPasswordForEmailChange, setCurrentPasswordForEmailChange] = useState(''); // For email re-auth
+  const [currentPasswordForPasswordChange, setCurrentPasswordForPasswordChange] = useState(''); // For password change re-auth
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [isProfileLoading, setIsProfileLoading] = useState(false);
   const [isEmailLoading, setIsEmailLoading] = useState(false);
+  const [isPasswordLoading, setIsPasswordLoading] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -48,23 +53,66 @@ export default function SettingsPage() {
     e.preventDefault();
     if (!user || !user.email) return;
     
-    if (!currentPassword) {
+    if (!currentPasswordForEmailChange) {
         toast({ title: 'Authentication Required', description: 'Please enter your current password to change email.', variant: 'destructive' });
         return;
     }
     setIsEmailLoading(true);
 
     try {
-      const credential = EmailAuthProvider.credential(user.email, currentPassword);
+      const credential = EmailAuthProvider.credential(user.email, currentPasswordForEmailChange);
       await reauthenticateWithCredential(user, credential);
       await updateEmail(user, email);
       toast({ title: 'Email Updated', description: 'Your email address has been updated. Please verify your new email if prompted.' });
-      setCurrentPassword(''); // Clear password field
+      setCurrentPasswordForEmailChange(''); // Clear password field
     } catch (error: any) {
       toast({ title: 'Error Updating Email', description: error.message, variant: 'destructive' });
       console.error("Email update error:", error);
     } finally {
       setIsEmailLoading(false);
+    }
+  };
+
+  const handlePasswordChange = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!user || !user.email) return;
+
+    if (newPassword !== confirmNewPassword) {
+      toast({ title: 'Error', description: 'New passwords do not match.', variant: 'destructive' });
+      return;
+    }
+    if (!newPassword) {
+      toast({ title: 'Error', description: 'New password cannot be empty.', variant: 'destructive' });
+      return;
+    }
+     if (!currentPasswordForPasswordChange) {
+      toast({ title: 'Authentication Required', description: 'Please enter your current password to change your password.', variant: 'destructive' });
+      return;
+    }
+
+    setIsPasswordLoading(true);
+    try {
+      const credential = EmailAuthProvider.credential(user.email, currentPasswordForPasswordChange);
+      await reauthenticateWithCredential(user, credential);
+      await updatePassword(user, newPassword);
+      toast({ title: 'Password Updated', description: 'Your password has been successfully changed.' });
+      setCurrentPasswordForPasswordChange('');
+      setNewPassword('');
+      setConfirmNewPassword('');
+    } catch (error: any)
+     {
+      let errorMessage = 'Failed to update password.';
+      if (error.code === 'auth/wrong-password') {
+        errorMessage = 'Incorrect current password. Please try again.';
+      } else if (error.code === 'auth/weak-password') {
+        errorMessage = 'The new password is too weak. Please choose a stronger password.';
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      toast({ title: 'Error Changing Password', description: errorMessage, variant: 'destructive' });
+      console.error("Password change error:", error);
+    } finally {
+      setIsPasswordLoading(false);
     }
   };
   
@@ -136,19 +184,67 @@ export default function SettingsPage() {
                 />
               </div>
                <div>
-                <Label htmlFor="currentPassword">Current Password (required to change email)</Label>
+                <Label htmlFor="currentPasswordForEmailChange">Current Password (required to change email)</Label>
                 <Input 
-                  id="currentPassword" 
+                  id="currentPasswordForEmailChange" 
                   type="password" 
-                  value={currentPassword} 
-                  onChange={(e) => setCurrentPassword(e.target.value)} 
+                  value={currentPasswordForEmailChange} 
+                  onChange={(e) => setCurrentPasswordForEmailChange(e.target.value)} 
                   className="mt-1"
                   placeholder="Enter your current password"
                   disabled={isEmailLoading}
                 />
               </div>
-              <Button type="submit" disabled={isEmailLoading || email === user.email}>
+              <Button type="submit" disabled={isEmailLoading || email === user.email || !currentPasswordForEmailChange}>
                 {isEmailLoading ? 'Updating...' : 'Update Email'}
+              </Button>
+            </form>
+
+            <Separator />
+
+            <form onSubmit={handlePasswordChange} className="space-y-4">
+              <CardTitle className="text-lg font-headline pt-2">Change Password</CardTitle>
+              <div>
+                <Label htmlFor="currentPasswordForPasswordChange">Current Password</Label>
+                <Input
+                  id="currentPasswordForPasswordChange"
+                  type="password"
+                  value={currentPasswordForPasswordChange}
+                  onChange={(e) => setCurrentPasswordForPasswordChange(e.target.value)}
+                  className="mt-1"
+                  placeholder="Enter your current password"
+                  disabled={isPasswordLoading}
+                  required
+                />
+              </div>
+              <div>
+                <Label htmlFor="newPassword">New Password</Label>
+                <Input
+                  id="newPassword"
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  className="mt-1"
+                  placeholder="Enter your new password"
+                  disabled={isPasswordLoading}
+                  required
+                />
+              </div>
+              <div>
+                <Label htmlFor="confirmNewPassword">Confirm New Password</Label>
+                <Input
+                  id="confirmNewPassword"
+                  type="password"
+                  value={confirmNewPassword}
+                  onChange={(e) => setConfirmNewPassword(e.target.value)}
+                  className="mt-1"
+                  placeholder="Confirm your new password"
+                  disabled={isPasswordLoading}
+                  required
+                />
+              </div>
+              <Button type="submit" disabled={isPasswordLoading || !currentPasswordForPasswordChange || !newPassword || newPassword !== confirmNewPassword}>
+                {isPasswordLoading ? 'Changing Password...' : 'Change Password'}
               </Button>
             </form>
 
