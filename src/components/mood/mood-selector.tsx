@@ -1,18 +1,10 @@
 
 'use client';
 
-import type { MoodScale, Mood } from '@/lib/types';
+import type { MoodScale } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { Frown, Meh, Smile, SmilePlus, Laugh } from 'lucide-react'; // Using Smile for Neutral
-
-export const moods: Mood[] = [
-  { value: 'awful', label: 'Awful', icon: Frown, color: 'bg-red-500 hover:bg-red-600', score: 1 },
-  { value: 'bad', label: 'Bad', icon: Meh, color: 'bg-orange-500 hover:bg-orange-600', score: 2 },
-  { value: 'neutral', label: 'Neutral', icon: Smile, color: 'bg-yellow-500 hover:bg-yellow-600', score: 3 },
-  { value: 'good', label: 'Good', icon: SmilePlus, color: 'bg-lime-500 hover:bg-lime-600', score: 4 },
-  { value: 'great', label: 'Great', icon: Laugh, color: 'bg-green-500 hover:bg-green-600', score: 5 },
-];
+import { moodConfigurations } from '@/lib/mood-definitions';
 
 interface MoodSelectorProps {
   selectedMood: MoodScale | null;
@@ -22,7 +14,7 @@ interface MoodSelectorProps {
 export function MoodSelector({ selectedMood, onSelectMood }: MoodSelectorProps) {
   return (
     <div className="flex flex-wrap justify-center gap-3 sm:gap-4">
-      {moods.map((mood) => (
+      {moodConfigurations.map((mood) => (
         <Button
           key={mood.value}
           type="button"

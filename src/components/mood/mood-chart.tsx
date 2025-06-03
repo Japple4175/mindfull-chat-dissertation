@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { collection, query, where, orderBy, getDocs, Timestamp } from 'firebase/firestore';
 import { db, auth } from '@/lib/firebase';
 import type { MoodEntry, MoodScale } from '@/lib/types';
-import { moods as allMoodConfigs } from './mood-selector'; // Import all mood configurations
+import { moodConfigurations, moodValueToScoreMap, moodScoreToLabelMap } from '@/lib/mood-definitions';
 import { Bar, BarChart, Line, LineChart, CartesianGrid, XAxis, YAxis, ResponsiveContainer, Tooltip as RechartsTooltip, Legend } from 'recharts';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent, ChartLegend, ChartLegendContent } from '@/components/ui/chart';
@@ -50,7 +50,7 @@ async function fetchMoodDataForChart(userId: string, timeRange: 'weekly' | 'mont
 }
 
 const distributionChartConfig = Object.fromEntries(
-  allMoodConfigs.map((mood, index) => [
+  moodConfigurations.map((mood, index) => [
     mood.value,
     { label: mood.label, color: `hsl(var(--chart-${index + 1}))` }
   ])
@@ -60,14 +60,10 @@ const averageLineChartConfig = {
   averageMood: { label: 'Average Mood', color: 'hsl(var(--chart-1))' },
 } satisfies ChartConfig;
 
-const moodValueToScoreMap = Object.fromEntries(allMoodConfigs.map(mood => [mood.value, mood.score]));
-const moodScoreToLabelMap = Object.fromEntries(allMoodConfigs.map(mood => [mood.score, mood.label]));
-
-
 export function MoodChart({ timeRange, chartType }: MoodChartProps) {
   const currentUser = auth.currentUser;
   const { data: moodData, isLoading, error } = useQuery<MoodEntry[], Error>({
-    queryKey: ['moodChartData', currentUser?.uid, timeRange, chartType], // Added chartType to queryKey for uniqueness
+    queryKey: ['moodChartData', currentUser?.uid, timeRange, chartType],
     queryFn: () => {
       if (!currentUser?.uid) throw new Error('User not authenticated');
       return fetchMoodDataForChart(currentUser.uid, timeRange);
@@ -237,5 +233,5 @@ export function MoodChart({ timeRange, chartType }: MoodChartProps) {
     );
   }
 
-  return null; // Should not happen if chartType is correctly passed
+  return null; 
 }

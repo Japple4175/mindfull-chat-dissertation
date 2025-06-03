@@ -17,7 +17,8 @@ export function ChatInterface() {
   const [messages, setMessages] = useState<ConversationMessage[]>([
     { role: 'assistant', content: defaultInitialMessage }
   ]);
-  const [conversationHistory, setConversationHistory] = useState<ConversationMessage[]>([]);
+  // conversationHistory is now managed per session for context, not for long-term memory by client
+  const [currentSessionHistory, setCurrentSessionHistory] = useState<ConversationMessage[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -30,10 +31,13 @@ export function ChatInterface() {
   useEffect(scrollToBottom, [messages]);
 
   useEffect(() => {
+    // Reset current session history if user changes (login/logout)
+    setCurrentSessionHistory([]);
+    // Update initial greeting if user is logged in
     if (user?.displayName) {
       setMessages(prevMessages => {
         const newMessages = [...prevMessages];
-        if (newMessages.length > 0 && newMessages[0].role === 'assistant' && newMessages[0].content === defaultInitialMessage) {
+        if (newMessages.length > 0 && newMessages[0].role === 'assistant' && newMessages[0].content.startsWith("Hello!")) {
           newMessages[0] = { 
             role: 'assistant', 
             content: `Hello, ${user.displayName.split(' ')[0]}! I'm here to listen and support you. How are you feeling today?` 
@@ -41,6 +45,8 @@ export function ChatInterface() {
         }
         return newMessages;
       });
+    } else {
+       setMessages([{ role: 'assistant', content: defaultInitialMessage }]);
     }
   }, [user]);
 
@@ -50,7 +56,9 @@ export function ChatInterface() {
 
     const userMessage: ConversationMessage = { role: 'user', content: input.trim() };
     setMessages(prev => [...prev, userMessage]);
-    setConversationHistory(prev => [...prev, userMessage]);
+    // Add to current session history for the AI call
+    const updatedSessionHistory = [...currentSessionHistory, userMessage];
+    setCurrentSessionHistory(updatedSessionHistory);
     
     const currentInput = input;
     setInput('');
@@ -59,15 +67,19 @@ export function ChatInterface() {
     try {
       const aiResponse = await getChatbotResponse({ 
         message: userMessage.content, 
+        userId: user?.uid,
         userName: user?.displayName || undefined,
-        conversationHistory: [...conversationHistory, userMessage] // Send the up-to-date history
+        conversationHistory: updatedSessionHistory 
       });
       const assistantMessage: ConversationMessage = { role: 'assistant', content: aiResponse.response };
       setMessages(prev => [...prev, assistantMessage]);
-      setConversationHistory(prev => [...prev, assistantMessage]);
+      // Add AI response to current session history
+      setCurrentSessionHistory(prev => [...prev, assistantMessage]);
     } catch (error) {
       console.error('Error getting AI response:', error);
-      setMessages(prev => [...prev, { role: 'assistant', content: "I'm having a little trouble connecting right now. Please try again in a moment." }]);
+      const errorMessage: ConversationMessage = { role: 'assistant', content: "I'm having a little trouble connecting right now. Please try again in a moment." };
+      setMessages(prev => [...prev, errorMessage]);
+      setCurrentSessionHistory(prev => [...prev, errorMessage]); // Also add error to session history for context if retry
     } finally {
       setIsLoading(false);
     }
@@ -113,7 +125,7 @@ export function ChatInterface() {
                   <AvatarFallback>{getInitials(user.displayName)}</AvatarFallback>
                 </Avatar>
               )}
-               {msg.role === 'user' && !user && ( // Fallback for anonymous user
+               {msg.role === 'user' && !user && ( 
                 <Avatar className="h-10 w-10">
                   <AvatarFallback><User /></AvatarFallback>
                 </Avatar>
