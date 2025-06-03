@@ -31,66 +31,52 @@ const ChatbotResponseOutputSchema = z.object({
 });
 export type ChatbotResponseOutput = z.infer<typeof ChatbotResponseOutputSchema>;
 
-export async function getChatbotResponse(input: ChatbotResponseInput): Promise<ChatbotResponseOutput> {
-  return chatbotResponseFlow(input);
-}
+// Define the tool at the top level
+const MoodAnalyzerToolInputSchema = MoodAnalysisInputSchema.extend({
+  userId: z.string().describe("The ID of the user whose moods are being analyzed. This MUST be provided by the LLM if the user is logged in."),
+});
 
-// This flow is defined outside and then called, to allow dynamic tool definition
-const chatbotResponseFlow = ai.defineFlow(
+const moodAnalyzerTool = ai.defineTool(
   {
-    name: 'chatbotResponseFlow',
-    inputSchema: ChatbotResponseInputSchema,
-    outputSchema: ChatbotResponseOutputSchema,
+    name: 'getUserMoodAnalysis',
+    description: "Fetches and analyzes a logged-in user's mood trends for a specified period ('last7days' or 'last30days'). Use this to discuss mood patterns, averages, or how the user has been feeling, if they ask about it or if it seems relevant and you have their userId. Do not use if the analysis result indicates no data was found (isEmpty: true) or if no userId is available.",
+    inputSchema: MoodAnalyzerToolInputSchema,
+    outputSchema: MoodAnalysisOutputSchema,
   },
-  async (flowInput): Promise<ChatbotResponseOutput> => {
-    console.log('[Chatbot Flow] Invoked with input:', JSON.stringify(flowInput, null, 2));
-    const { userId, userName, message, conversationHistory } = flowInput;
+  async ({ timeRange, userId }) => { // Tool handler
+    if (!userId) {
+      return { isEmpty: true, trendSummary: "Cannot analyze moods without user identification. Please ask the user to log in or confirm their identity if applicable." };
+    }
+    try {
+      console.log(`[MoodAnalyzerTool] Called for userId: ${userId}, timeRange: ${timeRange}`);
+      return await analyzeMoodTrends(userId, timeRange);
+    } catch (e: any) {
+      console.error('[MoodAnalyzerTool] Error calling analyzeMoodTrends:', e);
+      return { isEmpty: true, trendSummary: `Error analyzing mood trends: ${e.message}` };
+    }
+  }
+);
 
-    let toolsList:any[] = [];
-    let systemPromptExtension = "";
+// Define the prompt at the top level
+const chatbotPrompt = ai.definePrompt({
+  name: 'chatbotResponsePrompt',
+  input: { schema: ChatbotResponseInputSchema },
+  output: { schema: ChatbotResponseOutputSchema },
+  tools: [moodAnalyzerTool], // Tool is always available
+  prompt: `You are a mental health chatbot designed to provide supportive responses to users. Be kind and understanding.
 
-    if (userId) {
-      const moodAnalyzerTool = ai.defineTool(
-        {
-          name: 'getUserMoodAnalysis',
-          description: "Fetches and analyzes the user's logged mood trends for a specified period ('last7days' or 'last30days'). Use this to discuss mood patterns, averages, or how the user has been feeling, if they ask about it or if it seems relevant. Do not use if the analysis result indicates no data was found (isEmpty: true).",
-          inputSchema: MoodAnalysisInputSchema,
-          outputSchema: MoodAnalysisOutputSchema,
-        },
-        async ({ timeRange }) => { // Tool handler
-          if (!userId) { // Should not happen if tool is only added when userId exists
-            return { isEmpty: true, trendSummary: "Cannot analyze moods without user identification." };
-          }
-          try {
-            return await analyzeMoodTrends(userId, timeRange);
-          } catch (e: any) {
-            console.error('[Chatbot Flow] Error calling analyzeMoodTrends from tool:', e);
-            return { isEmpty: true, trendSummary: `Error analyzing mood trends: ${e.message}` };
-          }
-        }
-      );
-      toolsList.push(moodAnalyzerTool);
-      systemPromptExtension = `
-You are speaking with user ID ${userId}.
-{{#if userName}}You know their name is {{userName}}.{{/if}}
-This user can log their moods. If they ask about their mood trends or how they've been feeling, you can use the 'getUserMoodAnalysis' tool to get a summary of their mood data for the 'last7days' or 'last30days'.
+{{#if userId}}
+You are speaking with user ID {{userId}}.
+{{#if userName}}You know their name is {{userName}}. Try to use their name naturally in conversation if appropriate, to make the interaction feel more personal.{{/if}}
+This user can log their moods. If they ask about their mood trends or how they've been feeling, you can use the 'getUserMoodAnalysis' tool.
+When calling 'getUserMoodAnalysis', you MUST provide their 'userId' (which is '{{userId}}') and a 'timeRange' ('last7days' or 'last30days').
 When you get the analysis, discuss it with them. For example, you can mention their average mood or common moods from the 'moodDistribution' or 'trendSummary'.
 If the analysis result has 'isEmpty: true', it means the user hasn't logged (enough) moods for the period; inform them of this and encourage them to log more moods.
-Do not use the tool if you are not confident the user is asking about their mood data or trends.
-`;
-    }
-
-
-    const prompt = ai.definePrompt({
-      name: 'chatbotResponsePrompt',
-      input: { schema: ChatbotResponseInputSchema }, // Kept for consistency, but flowInput used directly
-      output: { schema: ChatbotResponseOutputSchema },
-      tools: toolsList,
-      prompt: `You are a mental health chatbot designed to provide supportive responses to users. Be kind and understanding.
-${systemPromptExtension}
-{{#if userName}}
-You are speaking with {{userName}}. Try to use their name naturally in conversation if appropriate, to make the interaction feel more personal.
+Do not use the tool if you are not confident the user is asking about their mood data or trends, or if no 'userId' is available.
+{{else}}
+The user is not logged in, or their ID is not available. You cannot access their mood trends. You can still chat generally.
 {{/if}}
+
 {{#if conversationHistory}}
 You have access to the previous conversation history with this user. Use it to inform your responses and provide continuity.
 Respond to the current user message while taking into account the conversation history.
@@ -102,21 +88,33 @@ Conversation history:
 {{/if}}
 
 Current User message: {{{message}}}`,
-      config: {
-        safetySettings: [
-          { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
-          { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
-          { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
-          { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_LOW_AND_ABOVE' },
-        ],
-      },
-    });
+  config: {
+    safetySettings: [
+      { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
+      { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+      { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
+      { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_LOW_AND_ABOVE' },
+    ],
+  },
+});
+
+
+export async function getChatbotResponse(input: ChatbotResponseInput): Promise<ChatbotResponseOutput> {
+  return chatbotResponseFlow(input);
+}
+
+const chatbotResponseFlow = ai.defineFlow(
+  {
+    name: 'chatbotResponseFlow',
+    inputSchema: ChatbotResponseInputSchema,
+    outputSchema: ChatbotResponseOutputSchema,
+  },
+  async (flowInput): Promise<ChatbotResponseOutput> => {
+    console.log('[Chatbot Flow] Invoked with input:', JSON.stringify(flowInput, null, 2));
 
     try {
-      // Pass only the relevant parts of flowInput that match the prompt's expected structure
-      // or that Handlebars needs. The `tools` mechanism will handle tool calls.
-      const genkitResponse = await prompt({ message, userName, conversationHistory, userId });
-
+      // Call the globally defined prompt
+      const genkitResponse = await chatbotPrompt(flowInput);
 
       if (!genkitResponse || !genkitResponse.output) {
         let detailMessage = 'No output from AI model.';
