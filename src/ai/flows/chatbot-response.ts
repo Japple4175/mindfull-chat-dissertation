@@ -2,7 +2,8 @@
 'use server';
 
 /**
- * @fileOverview A chatbot conversation AI agent that remembers conversations.
+ * @fileOverview A chatbot conversation AI agent that remembers conversations
+ * and can use tools to analyze mood trends.
  *
  * - getChatbotResponse - Handles the chatbot conversation process, including fetching and saving history.
  * - ChatbotResponseInput - The input type for the getChatbotResponse function.
@@ -11,8 +12,8 @@
 
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
-import type { ConversationMessage, ChatMessageEntry } from '@/lib/types';
-import { MoodAnalysisInputSchema, MoodAnalysisOutputSchema } from '@/lib/types';
+import type { ConversationMessage } from '@/lib/types';
+import { MoodAnalysisInputSchema, MoodAnalysisOutputSchema } from '@/lib/types'; // Assuming these are still relevant for tool use
 import { analyzeMoodTrends } from '@/services/mood-service';
 import { fetchChatHistory, addChatMessage } from '@/services/chat-service';
 
@@ -20,7 +21,6 @@ const ChatbotResponseInputSchema = z.object({
   message: z.string().describe('The user message to respond to.'),
   userId: z.string().optional().describe('The ID of the user, if known and logged in.'),
   userName: z.string().optional().describe('The name of the user, if known.'),
-  // conversationHistory is no longer passed from client, it's fetched by the flow
 });
 export type ChatbotResponseInput = z.infer<typeof ChatbotResponseInputSchema>;
 
@@ -29,6 +29,7 @@ const ChatbotResponseOutputSchema = z.object({
 });
 export type ChatbotResponseOutput = z.infer<typeof ChatbotResponseOutputSchema>;
 
+// Tool for mood analysis
 const MoodAnalyzerToolInputSchema = MoodAnalysisInputSchema.extend({
   userId: z.string().describe("The ID of the user whose moods are being analyzed. This MUST be provided by the LLM if the user is logged in."),
 });
@@ -41,8 +42,8 @@ const moodAnalyzerTool = ai.defineTool(
     outputSchema: MoodAnalysisOutputSchema,
   },
   async ({ timeRange, userId }) => {
-    if (!userId) {
-      return { isEmpty: true, trendSummary: "Cannot analyze moods without user identification. Please ask the user to log in or confirm their identity if applicable." };
+    if (!userId) { // Should not happen if LLM uses tool correctly based on prompt
+      return { isEmpty: true, trendSummary: "Cannot analyze moods without user identification. Tool should only be called if userId is known." };
     }
     try {
       console.log(`[MoodAnalyzerTool] Called for userId: ${userId}, timeRange: ${timeRange}`);
@@ -54,40 +55,47 @@ const moodAnalyzerTool = ai.defineTool(
   }
 );
 
+// Prompt for ongoing conversation
 const chatbotPrompt = ai.definePrompt({
   name: 'chatbotResponsePrompt',
-  // Input schema for the prompt itself, now includes the fetched conversation history
   input: { schema: ChatbotResponseInputSchema.extend({
+    // conversationHistory is critical for context
     conversationHistory: z.array(z.object({
       role: z.enum(['user', 'assistant']),
       content: z.string(),
-    })).optional().describe('The conversation history between the user and the bot, fetched from persistent storage.')
+    })).optional().describe('The conversation history. The last message is the current user message to respond to.')
   }) },
   output: { schema: ChatbotResponseOutputSchema },
-  tools: [moodAnalyzerTool],
-  prompt: `You are a mental health chatbot designed to provide supportive responses to users. Be kind and understanding.
-You can remember past conversations with logged-in users.
+  tools: [moodAnalyzerTool], // Mood tool is always available
+  prompt: `You are Mindful Chat, a supportive mental health AI assistant. Be kind, empathetic, and understanding.
+Your responses should be helpful and considerate.
 
 {{#if userId}}
-You are speaking with user ID {{userId}}.
-{{#if userName}}You know their name is {{userName}}. Try to use their name naturally in conversation if appropriate, to make the interaction feel more personal.{{/if}}
-This user can log their moods. If they ask about their mood trends or how they've been feeling, you can use the 'getUserMoodAnalysis' tool.
+You are speaking with user ID {{userId}}{{#if userName}}, their name is {{userName}}{{/if}}.
+The user has just received a greeting from you which may have referenced a previous conversation topic.
+Their current message is either a response to that greeting or a new topic.
+Use the conversation history below (where the last message is their current one) to understand the context and respond appropriately.
+
+If they ask about their mood trends or how they've been feeling, and you have their 'userId', you can use the 'getUserMoodAnalysis' tool.
 When calling 'getUserMoodAnalysis', you MUST provide their 'userId' (which is '{{userId}}') and a 'timeRange' ('last7days' or 'last30days').
-When you get the analysis, discuss it with them. For example, you can mention their average mood or common moods from the 'moodDistribution' or 'trendSummary'.
-If the analysis result has 'isEmpty: true', it means the user hasn't logged (enough) moods for the period; inform them of this and encourage them to log more moods.
-Do not use the tool if you are not confident the user is asking about their mood data or trends, or if no 'userId' is available.
+When you get the analysis, discuss it with them. If the analysis result has 'isEmpty: true', it means no (or not enough) mood data was found; inform them gently.
+Do not use the tool if you are not confident the user is asking about their mood data or trends.
 {{else}}
-The user is not logged in, or their ID is not available. You cannot access their mood trends or remember past conversations. You can still chat generally.
+The user is not logged in, or their ID is not available. You cannot access their mood trends. Respond generally to their message.
 {{/if}}
 
 {{#if conversationHistory.length}}
-Conversation history:
+Conversation history (the last message is the current one from the user):
 {{#each conversationHistory}}
 {{role}}: {{content}}
 {{/each}}
+{{else}}
+  {{! This case implies the 'message' field from ChatbotResponseInputSchema is the first message,
+      but the flow logic ensures conversationHistory sent to prompt always contains the current user message. }}
+This is the user's first message in this interaction: {{{message}}}
 {{/if}}
 
-Current User message: {{{message}}}`,
+Respond to the user's last message in the history.`,
   config: {
     safetySettings: [
       { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
@@ -110,38 +118,37 @@ const chatbotResponseFlow = ai.defineFlow(
     outputSchema: ChatbotResponseOutputSchema,
   },
   async (flowInput): Promise<ChatbotResponseOutput> => {
-    console.log('[Chatbot Flow with Memory] Invoked with input:', JSON.stringify(flowInput, null, 2));
+    console.log('[Chatbot Response Flow] Invoked with input:', JSON.stringify(flowInput, null, 2));
 
-    const userMessage: ConversationMessage = { role: 'user', content: flowInput.message };
+    const userMessageToSave: ConversationMessage = { role: 'user', content: flowInput.message };
     let conversationHistoryForAI: ConversationMessage[] = [];
 
     if (flowInput.userId) {
       // Save user's new message
-      await addChatMessage(flowInput.userId, userMessage);
+      await addChatMessage(flowInput.userId, userMessageToSave);
       // Fetch past history (e.g., last 20 messages including the one just added)
       const fetchedHistory = await fetchChatHistory(flowInput.userId, 20);
       conversationHistoryForAI = fetchedHistory.map(msg => ({ role: msg.role, content: msg.content }));
     } else {
-      // For non-logged-in users, history is just the current message
-      conversationHistoryForAI = [userMessage];
+      // For non-logged-in users, history is just the current message for the prompt
+      conversationHistoryForAI = [userMessageToSave];
     }
+
+    // Ensure the current user message is the last in the history array for the prompt
+    // If conversationHistoryForAI was populated from DB, it already includes the latest user message.
+    // If user is not logged in, conversationHistoryForAI is just their current message.
 
     try {
       const genkitResponse = await chatbotPrompt({
-        ...flowInput, // includes message, userId, userName
+        ...flowInput, // includes original message, userId, userName
         conversationHistory: conversationHistoryForAI, // Pass the fetched/constructed history
       });
-
-      if (!genkitResponse || !genkitResponse.output) {
-        let detailMessage = 'No output from AI model.';
-        if (!genkitResponse) detailMessage = 'AI model call did not return a response object.';
-        console.error(`[Chatbot Flow with Memory] Error: ${detailMessage}`);
-        throw new Error(`[Chatbot Flow with Memory] Error: ${detailMessage}. Check server logs.`);
-      }
       
+      if (!genkitResponse || !genkitResponse.output) {
+        throw new Error('AI model call did not return a response object or output.');
+      }
       if (!genkitResponse.output.response || typeof genkitResponse.output.response !== 'string') {
-        console.error('[Chatbot Flow with Memory] Error: AI model output is valid, but the response text is missing or not a string.');
-        throw new Error('AI model returned an invalid response format. Expected a text string.');
+        throw new Error('AI model output is valid, but the response text is missing or not a string.');
       }
 
       const assistantResponse: ConversationMessage = { role: 'assistant', content: genkitResponse.output.response };
@@ -153,10 +160,10 @@ const chatbotResponseFlow = ai.defineFlow(
       return genkitResponse.output;
 
     } catch (e: any) {
-      console.error('[Chatbot Flow with Memory] Error caught:', e);
-      let errorMessage = 'Failed to get chatbot response due to an unexpected error in the AI flow. Check server logs.';
-      if (e && e.message) errorMessage = `Failed to get chatbot response: ${e.message}. Check server logs.`;
-      else if (typeof e === 'string') errorMessage = `Failed to get chatbot response: ${e}. Check server logs.`;
+      console.error('[Chatbot Response Flow] Error caught:', e);
+      const errorMessage = e.message || 'Failed to get chatbot response due to an unexpected error.';
+      // It's better to throw the error so client-side can catch it and display.
+      // Or return a specific error structure if preferred.
       throw new Error(errorMessage);
     }
   }
