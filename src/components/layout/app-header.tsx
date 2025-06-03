@@ -1,3 +1,4 @@
+
 'use client';
 
 import Link from 'next/link';
@@ -32,13 +33,11 @@ export function AppHeader() {
     }
   };
 
-  const getInitials = (name?: string | null) => {
-    if (!name) return 'U';
-    const names = name.split(' ');
-    if (names.length > 1) {
-      return `${names[0][0]}${names[1][0]}`.toUpperCase();
+  const getInitials = (name?: string | null): string => {
+    if (name && name.trim().length > 0) {
+      return name.trim()[0].toUpperCase();
     }
-    return names[0][0].toUpperCase();
+    return 'U';
   };
   
   // Placeholder for theme toggle, not fully implemented here
