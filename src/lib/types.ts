@@ -9,22 +9,38 @@ export interface MoodEntry {
   userId: string;
   mood: MoodScale;
   notes?: string;
-  timestamp: Timestamp; 
-  createdAt: Timestamp; 
+  timestamp: Timestamp;
+  createdAt: Timestamp;
 }
 
 export interface Mood {
   value: MoodScale;
   label: string;
   icon: React.ElementType;
-  color: string; 
-  score: number; 
+  color: string;
+  score: number;
 }
 
+// For UI display and AI flow internal use
 export interface ConversationMessage {
   role: 'user' | 'assistant';
   content: string;
+  id?: string; // Optional client-side ID
 }
+
+// For storing chat messages in Firestore
+export interface ChatMessageInFirestore {
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: FieldValue; // For serverTimestamp
+}
+
+// For chat messages retrieved from Firestore (timestamp resolved)
+export interface ChatMessageEntry extends ConversationMessage {
+  id: string; // Document ID from Firestore
+  timestamp: Timestamp;
+}
+
 
 export const MoodAnalysisInputSchema = z.object({
   timeRange: z.enum(['last7days', 'last30days']).describe("The time range for mood analysis, either 'last7days' or 'last30days'."),

@@ -2,27 +2,25 @@
 'use server';
 
 /**
- * @fileOverview A chatbot conversation AI agent.
+ * @fileOverview A chatbot conversation AI agent that remembers conversations.
  *
- * - getChatbotResponse - A function that handles the chatbot conversation process.
+ * - getChatbotResponse - Handles the chatbot conversation process, including fetching and saving history.
  * - ChatbotResponseInput - The input type for the getChatbotResponse function.
  * - ChatbotResponseOutput - The return type for the getChatbotResponse function.
  */
 
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
-import type { ConversationMessage } from '@/lib/types';
+import type { ConversationMessage, ChatMessageEntry } from '@/lib/types';
 import { MoodAnalysisInputSchema, MoodAnalysisOutputSchema } from '@/lib/types';
 import { analyzeMoodTrends } from '@/services/mood-service';
+import { fetchChatHistory, addChatMessage } from '@/services/chat-service';
 
 const ChatbotResponseInputSchema = z.object({
   message: z.string().describe('The user message to respond to.'),
   userId: z.string().optional().describe('The ID of the user, if known and logged in.'),
   userName: z.string().optional().describe('The name of the user, if known.'),
-  conversationHistory: z.array(z.object({
-    role: z.enum(['user', 'assistant']),
-    content: z.string(),
-  })).optional().describe('The conversation history between the user and the bot.')
+  // conversationHistory is no longer passed from client, it's fetched by the flow
 });
 export type ChatbotResponseInput = z.infer<typeof ChatbotResponseInputSchema>;
 
@@ -31,7 +29,6 @@ const ChatbotResponseOutputSchema = z.object({
 });
 export type ChatbotResponseOutput = z.infer<typeof ChatbotResponseOutputSchema>;
 
-// Define the tool at the top level
 const MoodAnalyzerToolInputSchema = MoodAnalysisInputSchema.extend({
   userId: z.string().describe("The ID of the user whose moods are being analyzed. This MUST be provided by the LLM if the user is logged in."),
 });
@@ -43,7 +40,7 @@ const moodAnalyzerTool = ai.defineTool(
     inputSchema: MoodAnalyzerToolInputSchema,
     outputSchema: MoodAnalysisOutputSchema,
   },
-  async ({ timeRange, userId }) => { // Tool handler
+  async ({ timeRange, userId }) => {
     if (!userId) {
       return { isEmpty: true, trendSummary: "Cannot analyze moods without user identification. Please ask the user to log in or confirm their identity if applicable." };
     }
@@ -57,13 +54,19 @@ const moodAnalyzerTool = ai.defineTool(
   }
 );
 
-// Define the prompt at the top level
 const chatbotPrompt = ai.definePrompt({
   name: 'chatbotResponsePrompt',
-  input: { schema: ChatbotResponseInputSchema },
+  // Input schema for the prompt itself, now includes the fetched conversation history
+  input: { schema: ChatbotResponseInputSchema.extend({
+    conversationHistory: z.array(z.object({
+      role: z.enum(['user', 'assistant']),
+      content: z.string(),
+    })).optional().describe('The conversation history between the user and the bot, fetched from persistent storage.')
+  }) },
   output: { schema: ChatbotResponseOutputSchema },
-  tools: [moodAnalyzerTool], // Tool is always available
+  tools: [moodAnalyzerTool],
   prompt: `You are a mental health chatbot designed to provide supportive responses to users. Be kind and understanding.
+You can remember past conversations with logged-in users.
 
 {{#if userId}}
 You are speaking with user ID {{userId}}.
@@ -74,13 +77,10 @@ When you get the analysis, discuss it with them. For example, you can mention th
 If the analysis result has 'isEmpty: true', it means the user hasn't logged (enough) moods for the period; inform them of this and encourage them to log more moods.
 Do not use the tool if you are not confident the user is asking about their mood data or trends, or if no 'userId' is available.
 {{else}}
-The user is not logged in, or their ID is not available. You cannot access their mood trends. You can still chat generally.
+The user is not logged in, or their ID is not available. You cannot access their mood trends or remember past conversations. You can still chat generally.
 {{/if}}
 
-{{#if conversationHistory}}
-You have access to the previous conversation history with this user. Use it to inform your responses and provide continuity.
-Respond to the current user message while taking into account the conversation history.
-
+{{#if conversationHistory.length}}
 Conversation history:
 {{#each conversationHistory}}
 {{role}}: {{content}}
@@ -110,80 +110,53 @@ const chatbotResponseFlow = ai.defineFlow(
     outputSchema: ChatbotResponseOutputSchema,
   },
   async (flowInput): Promise<ChatbotResponseOutput> => {
-    console.log('[Chatbot Flow] Invoked with input:', JSON.stringify(flowInput, null, 2));
+    console.log('[Chatbot Flow with Memory] Invoked with input:', JSON.stringify(flowInput, null, 2));
+
+    const userMessage: ConversationMessage = { role: 'user', content: flowInput.message };
+    let conversationHistoryForAI: ConversationMessage[] = [];
+
+    if (flowInput.userId) {
+      // Save user's new message
+      await addChatMessage(flowInput.userId, userMessage);
+      // Fetch past history (e.g., last 20 messages including the one just added)
+      const fetchedHistory = await fetchChatHistory(flowInput.userId, 20);
+      conversationHistoryForAI = fetchedHistory.map(msg => ({ role: msg.role, content: msg.content }));
+    } else {
+      // For non-logged-in users, history is just the current message
+      conversationHistoryForAI = [userMessage];
+    }
 
     try {
-      // Call the globally defined prompt
-      const genkitResponse = await chatbotPrompt(flowInput);
+      const genkitResponse = await chatbotPrompt({
+        ...flowInput, // includes message, userId, userName
+        conversationHistory: conversationHistoryForAI, // Pass the fetched/constructed history
+      });
 
       if (!genkitResponse || !genkitResponse.output) {
         let detailMessage = 'No output from AI model.';
-        if (!genkitResponse) {
-          detailMessage = 'AI model call did not return a response object.';
-        }
-        console.error(`[Chatbot Flow] Error: ${detailMessage} Full Genkit response (if available):`, 
-          genkitResponse ? JSON.stringify(genkitResponse, null, 2) : 'N/A'
-        );
-        if (genkitResponse && genkitResponse.candidates && genkitResponse.candidates.length > 0) {
-          genkitResponse.candidates.forEach((candidate, index) => {
-            const finishReason = candidate.finishReason;
-            const candidateMessageParts = candidate.message?.content; 
-            console.error(`[Chatbot Flow] Candidate ${index}: Finish Reason - ${finishReason}`);
-            console.error(`[Chatbot Flow] Candidate ${index}: Message Parts - ${JSON.stringify(candidateMessageParts, null, 2)}`);
-            if (finishReason === 'TOOL_CALLS' && candidate.message?.toolRequests) {
-              console.log(`[Chatbot Flow] Candidate ${index} requested tool calls:`, JSON.stringify(candidate.message.toolRequests, null, 2));
-            } else if (finishReason === 'SAFETY' && Array.isArray(candidateMessageParts)) {
-              let safetyRatingsFound = null;
-              for (const part of candidateMessageParts) {
-                if (part.custom?.safetyRatings) {
-                  safetyRatingsFound = part.custom.safetyRatings;
-                  break;
-                }
-              }
-              if (safetyRatingsFound) {
-                console.error(`[Chatbot Flow] Candidate ${index} Safety Ratings:`, JSON.stringify(safetyRatingsFound, null, 2));
-              } else {
-                 console.warn(`[Chatbot Flow] Candidate ${index} finishReason is SAFETY, but safetyRatings not found in expected structure.`);
-              }
-            }
-          });
-          throw new Error('The AI model did not return a valid response, potentially due to safety filters or incomplete tool use. Check server logs.');
-        } else if (genkitResponse && (!genkitResponse.candidates || genkitResponse.candidates.length === 0)) {
-           console.warn('[Chatbot Flow] Error: AI model response contained no candidates.');
-           throw new Error('The AI model response contained no candidates. Check server logs.');
-        }
-        throw new Error(`[Chatbot Flow] Error: ${detailMessage} Check server logs.`);
+        if (!genkitResponse) detailMessage = 'AI model call did not return a response object.';
+        console.error(`[Chatbot Flow with Memory] Error: ${detailMessage}`);
+        throw new Error(`[Chatbot Flow with Memory] Error: ${detailMessage}. Check server logs.`);
       }
       
       if (!genkitResponse.output.response || typeof genkitResponse.output.response !== 'string') {
-        console.error('[Chatbot Flow] Error: AI model output is valid, but the response text is missing or not a string. Output:', JSON.stringify(genkitResponse.output, null, 2));
+        console.error('[Chatbot Flow with Memory] Error: AI model output is valid, but the response text is missing or not a string.');
         throw new Error('AI model returned an invalid response format. Expected a text string.');
+      }
+
+      const assistantResponse: ConversationMessage = { role: 'assistant', content: genkitResponse.output.response };
+      if (flowInput.userId) {
+        // Save AI's response
+        await addChatMessage(flowInput.userId, assistantResponse);
       }
       
       return genkitResponse.output;
 
     } catch (e: any) {
-      console.error('[Chatbot Flow] Error caught. Raw error object:', e);
-      try {
-        console.error('[Chatbot Flow] Error (stringified with sensitive data handling):', 
-          JSON.stringify(e, (key, value) => {
-            if (typeof value === 'string' && (key.toLowerCase().includes('key') || key.toLowerCase().includes('secret'))) {
-              return '[REDACTED]';
-            }
-            return value;
-          }, 2)
-        );
-      } catch (stringifyError) {
-        console.error('[Chatbot Flow] Failed to stringify error object:', stringifyError);
-      }
-      
+      console.error('[Chatbot Flow with Memory] Error caught:', e);
       let errorMessage = 'Failed to get chatbot response due to an unexpected error in the AI flow. Check server logs.';
-      if (e && e.message) {
-        errorMessage = `Failed to get chatbot response: ${e.message}. Check server logs.`;
-      } else if (typeof e === 'string') {
-        errorMessage = `Failed to get chatbot response: ${e}. Check server logs.`;
-      }
-      
+      if (e && e.message) errorMessage = `Failed to get chatbot response: ${e.message}. Check server logs.`;
+      else if (typeof e === 'string') errorMessage = `Failed to get chatbot response: ${e}. Check server logs.`;
       throw new Error(errorMessage);
     }
   }
