@@ -3,7 +3,7 @@
 'use server';
 
 /**
- * @fileOverview A chatbot conversation AI agent with persistent memory.
+ * @fileOverview A chatbot conversation AI agent.
  *
  * - getChatbotResponse - A function that handles the chatbot conversation process.
  * - ChatbotResponseInput - The input type for the getChatbotResponse function.
@@ -12,12 +12,14 @@
 
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
-import { fetchChatHistory, addChatMessage } from '@/services/chat-service';
 import type { ConversationMessage } from '@/lib/types';
 
 const ChatbotResponseInputSchema = z.object({
-  userId: z.string().describe('The ID of the user engaging in the conversation.'),
   message: z.string().describe('The user message to respond to.'),
+  conversationHistory: z.array(z.object({
+    role: z.enum(['user', 'assistant']),
+    content: z.string(),
+  })).optional().describe('The conversation history between the user and the bot.')
 });
 export type ChatbotResponseInput = z.infer<typeof ChatbotResponseInputSchema>;
 
@@ -26,25 +28,16 @@ const ChatbotResponseOutputSchema = z.object({
 });
 export type ChatbotResponseOutput = z.infer<typeof ChatbotResponseOutputSchema>;
 
-// Define a new schema for the prompt that includes conversation history
-const PromptInputSchema = z.object({
-  message: z.string().describe('The user message to respond to.'),
-  conversationHistory: z.array(z.object({
-    role: z.enum(['user', 'assistant']),
-    content: z.string(),
-  })).optional().describe('The conversation history between the user and the bot.')
-});
-
-
 export async function getChatbotResponse(input: ChatbotResponseInput): Promise<ChatbotResponseOutput> {
   return chatbotResponseFlow(input);
 }
 
 const prompt = ai.definePrompt({
-  name: 'chatbotResponsePromptWithHistory',
-  input: {schema: PromptInputSchema}, // Use the new schema here
+  name: 'chatbotResponsePrompt',
+  input: {schema: ChatbotResponseInputSchema},
   output: {schema: ChatbotResponseOutputSchema},
   prompt: `You are a mental health chatbot designed to provide supportive responses to users. Be kind and understanding.
+{{#if conversationHistory}}
 You have access to the previous conversation history with this user. Use it to inform your responses and provide continuity.
 Respond to the current user message while taking into account the conversation history.
 
@@ -52,6 +45,7 @@ Conversation history:
 {{#each conversationHistory}}
 {{role}}: {{content}}
 {{/each}}
+{{/if}}
 
 Current User message: {{{message}}}`,
   config: {
@@ -84,28 +78,8 @@ const chatbotResponseFlow = ai.defineFlow(
   },
   async (input): Promise<ChatbotResponseOutput> => {
     console.log('[Chatbot Flow] Invoked with input:', JSON.stringify(input, null, 2));
-
-    let conversationHistory: ConversationMessage[] = [];
     try {
-      conversationHistory = await fetchChatHistory(input.userId);
-      console.log(`[Chatbot Flow] Fetched ${conversationHistory.length} past messages for user ${input.userId}`);
-    } catch (e: any) {
-      console.error(`[Chatbot Flow] Error fetching chat history for user ${input.userId}:`, e.message);
-      // Continue without history, or throw error depending on desired behavior
-      // For now, we'll let it proceed with an empty history
-    }
-
-    try {
-      // Save the user's new message to history before calling the AI
-      await addChatMessage(input.userId, { role: 'user', content: input.message });
-      console.log(`[Chatbot Flow] Saved user message for ${input.userId}`);
-
-      const promptInput = {
-        message: input.message,
-        conversationHistory: conversationHistory,
-      };
-      
-      const genkitResponse = await prompt(promptInput);
+      const genkitResponse = await prompt(input);
 
       if (!genkitResponse || !genkitResponse.output) {
         let detailMessage = 'No output from AI model.';
@@ -115,7 +89,6 @@ const chatbotResponseFlow = ai.defineFlow(
         console.error(`[Chatbot Flow] Error: ${detailMessage} Full Genkit response (if available):`, 
           genkitResponse ? JSON.stringify(genkitResponse, null, 2) : 'N/A'
         );
-        // Further detailed logging for candidates and safety as before
         if (genkitResponse && genkitResponse.candidates && genkitResponse.candidates.length > 0) {
           genkitResponse.candidates.forEach((candidate, index) => {
             const finishReason = candidate.finishReason;
@@ -149,10 +122,6 @@ const chatbotResponseFlow = ai.defineFlow(
         console.error('[Chatbot Flow] Error: AI model output is valid, but the response text is missing or not a string. Output:', JSON.stringify(genkitResponse.output, null, 2));
         throw new Error('AI model returned an invalid response format. Expected a text string.');
       }
-      
-      // Save the AI's response to history
-      await addChatMessage(input.userId, { role: 'assistant', content: genkitResponse.output.response });
-      console.log(`[Chatbot Flow] Saved assistant response for ${input.userId}`);
       
       return genkitResponse.output;
 

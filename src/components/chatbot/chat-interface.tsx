@@ -11,13 +11,14 @@ import { cn } from '@/lib/utils';
 import { getChatbotResponse } from '@/ai/flows/chatbot-response';
 import type { ConversationMessage } from '@/lib/types';
 import { useAuth } from '@/hooks/useAuth';
-import { fetchChatHistory } from '@/services/chat-service'; // To pre-populate UI on load
 
 export function ChatInterface() {
-  const [messages, setMessages] = useState<ConversationMessage[]>([]);
+  const [messages, setMessages] = useState<ConversationMessage[]>([
+    { role: 'assistant', content: "Hello! I'm here to listen and support you. How are you feeling today?" }
+  ]);
+  const [conversationHistory, setConversationHistory] = useState<ConversationMessage[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [isHistoryLoading, setIsHistoryLoading] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { user } = useAuth();
 
@@ -27,61 +28,26 @@ export function ChatInterface() {
   
   useEffect(scrollToBottom, [messages]);
 
-  // Fetch initial chat history for the UI when the component mounts and user is available
-  useEffect(() => {
-    async function loadInitialHistory() {
-      if (user?.uid) {
-        setIsHistoryLoading(true);
-        try {
-          const pastMessages = await fetchChatHistory(user.uid);
-          if (pastMessages.length > 0) {
-            setMessages(pastMessages);
-          } else {
-            setMessages([{ role: 'assistant', content: "Hello! I'm here to listen and support you. How are you feeling today?" }]);
-          }
-        } catch (error) {
-          console.error('Error loading initial chat history for UI:', error);
-          setMessages([{ role: 'assistant', content: "Hello! I had trouble loading our past chat. How are you feeling today?" }]);
-        } finally {
-          setIsHistoryLoading(false);
-        }
-      } else if (!user && !isHistoryLoading) { // If there's no user and we weren't already loading
-         setMessages([{ role: 'assistant', content: "Hello! I'm here to listen and support you. How are you feeling today?" }]);
-         setIsHistoryLoading(false);
-      }
-    }
-
-    if (user) { // Only attempt to load history if user is available
-        loadInitialHistory();
-    } else { // If no user, set initial message and stop loading indicator.
-        setMessages([{ role: 'assistant', content: "Hello! Please log in to save your chat history. How are you feeling today?" }]);
-        setIsHistoryLoading(false);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.uid]); // Rerun when user.uid changes (login/logout)
-
-
   const handleSendMessage = async (e?: FormEvent) => {
     if (e) e.preventDefault();
-    if (!input.trim() || !user?.uid) {
-      if (!user?.uid) {
-        // Optionally, prompt user to log in or handle anonymous chat differently
-        setMessages(prev => [...prev, { role: 'user', content: input.trim() }, { role: 'assistant', content: "Please log in to continue and save our conversation." }]);
-        setInput('');
-      }
-      return;
-    }
+    if (!input.trim()) return;
 
-    const newMessage: ConversationMessage = { role: 'user', content: input.trim() };
-    setMessages(prev => [...prev, newMessage]);
+    const userMessage: ConversationMessage = { role: 'user', content: input.trim() };
+    setMessages(prev => [...prev, userMessage]);
+    setConversationHistory(prev => [...prev, userMessage]);
+    
     const currentInput = input;
     setInput('');
     setIsLoading(true);
 
     try {
-      // The AI flow now handles history internally using userId
-      const aiResponse = await getChatbotResponse({ userId: user.uid, message: newMessage.content });
-      setMessages(prev => [...prev, { role: 'assistant', content: aiResponse.response }]);
+      const aiResponse = await getChatbotResponse({ 
+        message: userMessage.content, 
+        conversationHistory: [...conversationHistory, userMessage] // Send the up-to-date history
+      });
+      const assistantMessage: ConversationMessage = { role: 'assistant', content: aiResponse.response };
+      setMessages(prev => [...prev, assistantMessage]);
+      setConversationHistory(prev => [...prev, assistantMessage]);
     } catch (error) {
       console.error('Error getting AI response:', error);
       setMessages(prev => [...prev, { role: 'assistant', content: "I'm having a little trouble connecting right now. Please try again in a moment." }]);
@@ -103,13 +69,7 @@ export function ChatInterface() {
     <div className="flex flex-col h-full overflow-hidden">
       <ScrollArea className="flex-grow p-4 sm:p-6 min-h-0">
         <div className="space-y-6">
-          {isHistoryLoading && (
-            <div className="flex items-center justify-center py-4">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-              <p className="ml-2 text-muted-foreground">Loading chat history...</p>
-            </div>
-          )}
-          {!isHistoryLoading && messages.map((msg, index) => (
+          {messages.map((msg, index) => (
             <div
               key={index}
               className={cn(
@@ -138,9 +98,14 @@ export function ChatInterface() {
                   <AvatarFallback>{getInitials(user.displayName)}</AvatarFallback>
                 </Avatar>
               )}
+               {msg.role === 'user' && !user && ( // Fallback for anonymous user
+                <Avatar className="h-10 w-10">
+                  <AvatarFallback><User /></AvatarFallback>
+                </Avatar>
+              )}
             </div>
           ))}
-          {isLoading && !isHistoryLoading && ( // Only show thinking loader if not initial history loading
+          {isLoading && (
             <div className="flex items-start gap-3 justify-start">
               <Avatar className="h-10 w-10 border border-primary/50">
                 <AvatarFallback className="bg-primary/20 text-primary"><Bot /></AvatarFallback>
@@ -159,12 +124,12 @@ export function ChatInterface() {
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={user ? "Type your message..." : "Please log in to chat"}
+            placeholder={"Type your message..."}
             className="flex-grow"
-            disabled={isLoading || !user || isHistoryLoading}
+            disabled={isLoading}
             aria-label="Chat message input"
           />
-          <Button type="submit" size="icon" disabled={isLoading || !input.trim() || !user || isHistoryLoading} aria-label="Send message">
+          <Button type="submit" size="icon" disabled={isLoading || !input.trim()} aria-label="Send message">
             <Send className="h-5 w-5" />
           </Button>
         </form>

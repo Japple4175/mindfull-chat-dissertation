@@ -17,7 +17,6 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { useState } from 'react';
 import { deleteAllUserMoodsAction } from '@/actions/mood-actions';
-import { deleteAllUserChatHistory } from '@/services/chat-service'; // Import chat history deletion
 import { Trash2 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { Separator } from '../ui/separator';
@@ -26,7 +25,6 @@ export function DataManagement() {
   const { toast } = useToast();
   const { user } = useAuth();
   const [isDeletingMoods, setIsDeletingMoods] = useState(false);
-  const [isDeletingChats, setIsDeletingChats] = useState(false);
 
   const handleDeleteAllMoodData = async () => {
     if (!user) {
@@ -42,21 +40,6 @@ export function DataManagement() {
       toast({ title: 'Error Deleting Mood Data', description: result.error || 'An unknown error occurred.', variant: 'destructive' });
     }
     setIsDeletingMoods(false);
-  };
-
-  const handleDeleteAllChatData = async () => {
-    if (!user) {
-      toast({ title: 'Authentication Error', description: 'You must be logged in to delete chat data.', variant: 'destructive' });
-      return;
-    }
-    setIsDeletingChats(true);
-    try {
-      await deleteAllUserChatHistory(user.uid);
-      toast({ title: 'Chat Data Deleted', description: 'All your chat history has been successfully deleted.' });
-    } catch (error: any) {
-       toast({ title: 'Error Deleting Chat Data', description: error.message || 'An unknown error occurred.', variant: 'destructive' });
-    }
-    setIsDeletingChats(false);
   };
 
 
@@ -96,37 +79,6 @@ export function DataManagement() {
             </AlertDialogContent>
           </AlertDialog>
         </div>
-
-        <Separator />
-        
-        <div>
-          <h4 className="font-semibold">Delete All Chat History</h4>
-          <p className="text-sm text-muted-foreground mt-1 mb-2">
-            This will permanently delete all your saved chat conversations. This action cannot be undone.
-          </p>
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button variant="destructive" disabled={isDeletingChats || !user}>
-                {isDeletingChats ? 'Deleting Chat Data...' : 'Delete All Chat History'}
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  This action cannot be undone. This will permanently delete all your chat messages from our servers.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel disabled={isDeletingChats}>Cancel</AlertDialogCancel>
-                <AlertDialogAction onClick={handleDeleteAllChatData} disabled={isDeletingChats || !user} className="bg-destructive hover:bg-destructive/90">
-                  {isDeletingChats ? 'Deleting...' : 'Yes, delete all chat history'}
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        </div>
-
       </CardContent>
     </Card>
   );
