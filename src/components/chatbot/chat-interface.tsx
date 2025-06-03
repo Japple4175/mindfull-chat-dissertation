@@ -9,19 +9,14 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Send, Bot, User, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getChatbotResponse } from '@/ai/flows/chatbot-response';
-import { generateGreeting } from '@/ai/flows/greeting-flow'; // Import the new greeting flow
 import type { ConversationMessage } from '@/lib/types';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
-// Chat service is now mainly used by the AI flows
-// import { fetchChatHistory, addChatMessage } from '@/services/chat-service';
-
 
 export function ChatInterface() {
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [input, setInput] = useState('');
-  const [isLoadingResponse, setIsLoadingResponse] = useState(false); // For AI responses
-  const [isLoadingGreeting, setIsLoadingGreeting] = useState(true); // For initial greeting
+  const [isLoadingResponse, setIsLoadingResponse] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { user } = useAuth();
   const { toast } = useToast();
@@ -32,39 +27,12 @@ export function ChatInterface() {
   
   useEffect(scrollToBottom, [messages]);
 
-  // Helper to get a generic personalized greeting if AI greeting fails or for non-logged-in users
-  const getFallbackPersonalizedGreeting = (userName?: string | null): string => {
-    const namePart = userName ? `, ${userName.split(' ')[0]}` : '';
-    return `Hello${namePart}! I'm here to listen and support you. How are you feeling today?`;
-  };
-
   useEffect(() => {
-    const initializeChat = async () => {
-      setIsLoadingGreeting(true);
-      setMessages([]); // Clear previous messages if user logs in/out
-
-      if (user) {
-        try {
-          const greetingResponse = await generateGreeting({ 
-            userId: user.uid, 
-            userName: user.displayName || undefined 
-          });
-          setMessages([{ role: 'assistant', content: greetingResponse.greeting, id: `greeting-${Date.now()}` }]);
-        } catch (error) {
-          console.error('Error generating intelligent greeting:', error);
-          const fallbackGreeting = getFallbackPersonalizedGreeting(user.displayName);
-          setMessages([{ role: 'assistant', content: fallbackGreeting, id: `fallback-greeting-${Date.now()}` }]);
-          toast({ title: 'Info', description: 'Could not fetch a smart greeting, using a default one.', variant: 'default' });
-        }
-      } else {
-        const defaultGreeting = getFallbackPersonalizedGreeting(null);
-        setMessages([{ role: 'assistant', content: defaultGreeting, id: `default-greeting-${Date.now()}` }]);
-      }
-      setIsLoadingGreeting(false);
-    };
-
-    initializeChat();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Set a generic initial greeting when the component mounts or user changes (logs in/out)
+    // This ensures the chat starts fresh.
+    const namePart = user?.displayName ? `, ${user.displayName.split(' ')[0]}` : '';
+    const initialGreeting = `Hello${namePart}! I'm Mindful Chat. How can I help you today?`;
+    setMessages([{ role: 'assistant', content: initialGreeting, id: `init-greeting-${Date.now()}` }]);
   }, [user]); 
 
   const handleSendMessage = async (e?: FormEvent) => {
@@ -72,28 +40,31 @@ export function ChatInterface() {
     if (!input.trim()) return;
 
     const userMessage: ConversationMessage = { role: 'user', content: input.trim(), id: `user-${Date.now()}` };
-    setMessages(prev => [...prev, userMessage]);
+    
+    // Add user message to local state for immediate display
+    const newMessages = [...messages, userMessage];
+    setMessages(newMessages);
     
     const currentInput = input;
     setInput('');
     setIsLoadingResponse(true);
 
     try {
-      // AI flow (getChatbotResponse) handles saving user message and fetching full history internally
+      // Pass current input and session history (excluding current input) to the AI flow
       const aiResponse = await getChatbotResponse({ 
-        message: userMessage.content, 
+        message: currentInput, 
         userId: user?.uid,
         userName: user?.displayName || undefined,
+        sessionHistory: messages.map(m => ({ role: m.role, content: m.content })), // History before the current user message
       });
       const assistantMessage: ConversationMessage = { role: 'assistant', content: aiResponse.response, id: `assistant-${Date.now()}` };
       setMessages(prev => [...prev, assistantMessage]);
-      // AI flow also handles saving assistant message
     } catch (error) {
       console.error('Error getting AI response:', error);
       const errorMessageContent = error instanceof Error ? error.message : "I'm having a little trouble connecting right now. Please try again in a moment.";
       const errorMessage: ConversationMessage = { role: 'assistant', content: errorMessageContent, id: `error-${Date.now()}` };
       setMessages(prev => [...prev, errorMessage]);
-       toast({ title: 'Chat Error', description: errorMessageContent, variant: 'destructive'});
+      toast({ title: 'Chat Error', description: errorMessageContent, variant: 'destructive'});
     } finally {
       setIsLoadingResponse(false);
     }
@@ -110,13 +81,7 @@ export function ChatInterface() {
     <div className="flex flex-col h-full overflow-hidden">
       <ScrollArea className="flex-grow p-4 sm:p-6 min-h-0">
         <div className="space-y-6">
-          {isLoadingGreeting && (
-            <div className="flex justify-center items-center py-8">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              <p className="ml-2 text-muted-foreground">Crafting a greeting for you...</p>
-            </div>
-          )}
-          {!isLoadingGreeting && messages.map((msg, index) => (
+          {messages.map((msg, index) => (
             <div
               key={msg.id || index} 
               className={cn(
@@ -152,7 +117,7 @@ export function ChatInterface() {
               )}
             </div>
           ))}
-          {isLoadingResponse && !isLoadingGreeting && ( // Show typing indicator only if not loading greeting
+          {isLoadingResponse && (
             <div className="flex items-start gap-3 justify-start">
               <Avatar className="h-10 w-10 border border-primary/50">
                 <AvatarFallback className="bg-primary/20 text-primary"><Bot /></AvatarFallback>
@@ -171,12 +136,12 @@ export function ChatInterface() {
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={isLoadingGreeting ? "Waiting for greeting..." : "Type your message..."}
+            placeholder="Type your message..."
             className="flex-grow"
-            disabled={isLoadingResponse || isLoadingGreeting}
+            disabled={isLoadingResponse}
             aria-label="Chat message input"
           />
-          <Button type="submit" size="icon" disabled={isLoadingResponse || isLoadingGreeting || !input.trim()} aria-label="Send message">
+          <Button type="submit" size="icon" disabled={isLoadingResponse || !input.trim()} aria-label="Send message">
             <Send className="h-5 w-5" />
           </Button>
         </form>

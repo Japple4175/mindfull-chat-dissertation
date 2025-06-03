@@ -28,20 +28,6 @@ export interface ConversationMessage {
   id?: string; // Optional client-side ID
 }
 
-// For storing chat messages in Firestore
-export interface ChatMessageInFirestore {
-  role: 'user' | 'assistant';
-  content: string;
-  timestamp: FieldValue; // For serverTimestamp
-}
-
-// For chat messages retrieved from Firestore and passed to client components
-export interface ChatMessageEntry extends ConversationMessage {
-  id: string; // Document ID from Firestore
-  timestamp: string; // Changed from Firestore Timestamp to ISO string for serialization
-}
-
-
 export const MoodAnalysisInputSchema = z.object({
   timeRange: z.enum(['last7days', 'last30days']).describe("The time range for mood analysis, either 'last7days' or 'last30days'."),
 });
