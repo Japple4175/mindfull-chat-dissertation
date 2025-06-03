@@ -15,8 +15,8 @@ async function fetchMoodHistory(userId: string): Promise<MoodEntry[]> {
   const q = query(
     collection(db, 'moodEntries'),
     where('userId', '==', userId),
-    orderBy('timestamp', 'desc'), // Re-enabled server-side sorting
-    limit(10) // Fetch up to 10 entries
+    orderBy('timestamp', 'desc'),
+    limit(10)
   );
   const querySnapshot = await getDocs(q);
   const entries = querySnapshot.docs.map(doc => {
@@ -30,7 +30,6 @@ async function fetchMoodHistory(userId: string): Promise<MoodEntry[]> {
       createdAt: data.createdAt as Timestamp,
     } as MoodEntry;
   });
-  // Removed client-side sort as server-side sort is active
   return entries;
 }
 
@@ -42,7 +41,8 @@ export function MoodHistory() {
       if (!currentUser?.uid) throw new Error('User not authenticated');
       return fetchMoodHistory(currentUser.uid);
     },
-    enabled: !!currentUser?.uid, 
+    enabled: !!currentUser?.uid,
+    staleTime: 1000 * 60, // 1 minute
   });
 
 
@@ -51,7 +51,7 @@ export function MoodHistory() {
       <Card>
         <CardHeader>
           <CardTitle className="font-headline">Recent Moods</CardTitle>
-          <CardDescription>Your latest mood entries.</CardDescription>
+          <CardDescription>Your latest mood entries, updated periodically.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {[...Array(3)].map((_, i) => (
@@ -89,6 +89,7 @@ export function MoodHistory() {
       <Card>
         <CardHeader>
           <CardTitle className="font-headline">Recent Moods</CardTitle>
+          <CardDescription>Your latest mood entries, updated periodically.</CardDescription>
         </CardHeader>
         <CardContent>
            <Alert>
@@ -107,7 +108,7 @@ export function MoodHistory() {
     <Card>
       <CardHeader>
         <CardTitle className="font-headline">Recent Moods</CardTitle>
-        <CardDescription>Your latest mood entries.</CardDescription> 
+        <CardDescription>Your latest mood entries, updated periodically.</CardDescription> 
       </CardHeader>
       <CardContent className="space-y-4">
         {moodHistory.map(entry => (

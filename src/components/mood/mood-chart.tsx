@@ -67,12 +67,13 @@ const moodScoreToLabelMap = Object.fromEntries(allMoodConfigs.map(mood => [mood.
 export function MoodChart({ timeRange, chartType }: MoodChartProps) {
   const currentUser = auth.currentUser;
   const { data: moodData, isLoading, error } = useQuery<MoodEntry[], Error>({
-    queryKey: ['moodChartData', currentUser?.uid, timeRange], // Query key is same, data processing differs
+    queryKey: ['moodChartData', currentUser?.uid, timeRange, chartType], // Added chartType to queryKey for uniqueness
     queryFn: () => {
       if (!currentUser?.uid) throw new Error('User not authenticated');
       return fetchMoodDataForChart(currentUser.uid, timeRange);
     },
     enabled: !!currentUser?.uid,
+    staleTime: 1000 * 60, // 1 minute
   });
 
   if (isLoading) {
