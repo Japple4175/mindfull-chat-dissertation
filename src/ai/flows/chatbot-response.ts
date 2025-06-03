@@ -91,7 +91,13 @@ Conversation history (the last message is the current one from the user):
 {{role}}: {{content}}
 {{/each}}
 
-Respond to the user's last message in the history.`,
+Respond to the user's last message in the history.
+
+IMPORTANT: Your final output MUST be a JSON object with a single key "response", and its value should be your textual reply. For example:
+{
+  "response": "This is my helpful and considerate reply."
+}
+`,
   config: {
     safetySettings: [
       { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
@@ -145,3 +151,4 @@ const chatbotResponseFlow = ai.defineFlow(
     }
   }
 );
+
