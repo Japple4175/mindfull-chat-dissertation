@@ -16,6 +16,7 @@ import type { ConversationMessage } from '@/lib/types';
 
 const ChatbotResponseInputSchema = z.object({
   message: z.string().describe('The user message to respond to.'),
+  userName: z.string().optional().describe('The name of the user, if known.'),
   conversationHistory: z.array(z.object({
     role: z.enum(['user', 'assistant']),
     content: z.string(),
@@ -37,6 +38,9 @@ const prompt = ai.definePrompt({
   input: {schema: ChatbotResponseInputSchema},
   output: {schema: ChatbotResponseOutputSchema},
   prompt: `You are a mental health chatbot designed to provide supportive responses to users. Be kind and understanding.
+{{#if userName}}
+You are speaking with {{userName}}. Try to use their name naturally in conversation if appropriate, to make the interaction feel more personal.
+{{/if}}
 {{#if conversationHistory}}
 You have access to the previous conversation history with this user. Use it to inform your responses and provide continuity.
 Respond to the current user message while taking into account the conversation history.
@@ -151,3 +155,4 @@ const chatbotResponseFlow = ai.defineFlow(
     }
   }
 );
+

@@ -43,6 +43,7 @@ export function ChatInterface() {
     try {
       const aiResponse = await getChatbotResponse({ 
         message: userMessage.content, 
+        userName: user?.displayName || undefined,
         conversationHistory: [...conversationHistory, userMessage] // Send the up-to-date history
       });
       const assistantMessage: ConversationMessage = { role: 'assistant', content: aiResponse.response };
