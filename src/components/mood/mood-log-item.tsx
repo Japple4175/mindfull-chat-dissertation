@@ -5,7 +5,7 @@ import type { MoodEntry } from '@/lib/types';
 import { format } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { moods as moodConfigs } from './mood-selector';
+import { moodConfigurations as moodConfigs } from '@/lib/mood-definitions';
 import { Trash2 } from 'lucide-react';
 import { deleteMoodAction } from '@/actions/mood-actions';
 import { useToast } from '@/hooks/use-toast';

@@ -1,6 +1,4 @@
 
-'use server';
-
 import type { Mood, MoodScale } from '@/lib/types';
 import { Frown, Meh, Smile, SmilePlus, Laugh } from 'lucide-react';
 
